@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>KA5 BSA BOM 주요 부품 중량 순위</title>
+<style>
+  body { font-family: 'Malgun Gothic', sans-serif; max-width: 960px; margin: 40px auto; padding: 0 20px; background: #f8f9fa; }
+  h1 { color: #1a1a2e; font-size: 22px; border-bottom: 3px solid #e94560; padding-bottom: 10px; }
+  .notice { background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px 16px; margin: 16px 0; border-radius: 4px; font-size: 14px; }
+  .summary { display: flex; gap: 16px; margin: 20px 0; }
+  .card { background: white; border-radius: 8px; padding: 16px 20px; flex: 1; box-shadow: 0 2px 8px rgba(0,0,0,0.08); text-align: center; }
+  .card .val { font-size: 26px; font-weight: bold; color: #e94560; }
+  .card .lbl { font-size: 12px; color: #888; margin-top: 4px; }
+  .chart-wrap { background: white; border-radius: 10px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin: 20px 0; }
+  .bar-row { display: flex; align-items: center; margin: 10px 0; gap: 10px; }
+  .rank { width: 28px; text-align: center; font-weight: bold; color: #666; font-size: 13px; }
+  .name { width: 240px; font-size: 13px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-bg { flex: 1; background: #f0f0f0; border-radius: 4px; height: 28px; position: relative; }
+  .bar { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 8px; font-size: 12px; color: white; font-weight: bold; transition: width 0.8s ease; }
+  .method-tag { font-size: 11px; padding: 2px 7px; border-radius: 10px; white-space: nowrap; }
+  .sa { background: #e3f2fd; color: #1565c0; }
+  .purchase { background: #f3e5f5; color: #6a1b9a; }
+  .sagup { background: #fce4ec; color: #c62828; }
+  .hw { background: #e8f5e9; color: #2e7d32; }
+  table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-top: 20px; }
+  th { background: #1a1a2e; color: white; padding: 12px 14px; font-size: 13px; text-align: left; }
+  td { padding: 10px 14px; font-size: 13px; border-bottom: 1px solid #f0f0f0; }
+  tr:hover td { background: #f8f9fa; }
+  .pno { font-family: monospace; color: #555; font-size: 12px; }
+  footer { text-align: center; color: #aaa; font-size: 12px; margin-top: 30px; }
+</style>
+</head>
+<body>
+
+<h1>KA5 BSA BOM — 주요 부품 중량 순위</h1>
+
+<div class="notice">
+  ⚠️ <strong>참고:</strong> 원가팀 송부본에 명시적인 단가(가격) 컬럼이 없어 <strong>중량(g)을 원가 비중 지표</strong>로 활용했습니다.
+  일반적으로 배터리 부품은 중량이 클수록 재료비가 높은 경향이 있습니다.
+</div>
+
+<div class="summary">
+  <div class="card"><div class="val">40,737g</div><div class="lbl">총 어셈블리 중량</div></div>
+  <div class="card"><div class="val">50개</div><div class="lbl">구성 부품 수</div></div>
+  <div class="card"><div class="val">15,233g</div><div class="lbl">최대 단품 (Battery Pack ASSY)</div></div>
+  <div class="card"><div class="val">KA5 300V</div><div class="lbl">차종 / 사양</div></div>
+</div>
+
+<div class="chart-wrap">
+  <h2 style="font-size:16px;margin-top:0;color:#333">주요 부품 중량 순위 (상위 10개, 단위: g)</h2>
+
+  <div id="chart"></div>
+</div>
+
+<h2 style="font-size:16px;color:#333">전체 주요 부품 목록 (중량 높은 순)</h2>
+<table>
+  <thead>
+    <tr><th>순위</th><th>P/NO</th><th>부품명</th><th>수량</th><th>중량(g)</th><th>공법</th></tr>
+  </thead>
+  <tbody id="table-body"></tbody>
+</table>
+
+<footer>KA5_BSA_300V_BOM_37500-KA000_260205(원가팀 송부).xlsx | 분석: 김성구 R&D | 2026-04-09</footer>
+
+<script>
+const data = [
+  { pno: '37510-KA000',  name: 'BATTERY PACK ASSY',             qty: 1, weight: 15233.2, method: 'S/A' },
+  { pno: 'KA375-P1000',  name: 'BATTERY PACK ASSY LWR CASE',   qty: 1, weight: 12507.2, method: 'S/A' },
+  { pno: '37507-SW000',  name: 'BATTERY MODULE ASSY-LOW VOLT', qty: 2, weight: 4546.3,  method: 'S/A' },
+  { pno: 'XX375-P2000',  name: 'PNL-ASSY BATTERY PACK UPR CASE', qty: 1, weight: 1165.2, method: 'S/A' },
+  { pno: '37514-5S000',  name: 'RELAY ASSY-POWER',              qty: 1, weight: 1500.0,  method: '사급' },
+  { pno: '37575-KA000',  name: 'BATTERY PACK COOLING BLOCK',   qty: 1, weight: 1185.0,  method: 'S/A' },
+  { pno: 'BS533-KA000',  name: 'BRKT-ASSY 12V MODULE MTG',     qty: 1, weight: 512.2,   method: 'S/A' },
+  { pno: '375A0-5S000',  name: 'BATTERY MANAGEMENT SYSTEM',    qty: 1, weight: 500.0,   method: '사급' },
+  { pno: '375SA-KA000',  name: 'GAP FILLER (442X160X3T)',      qty: 1, weight: 436.0,   method: '구매품' },
+  { pno: 'HV001-JX000',  name: 'HIGH VOLTAGE CONNECTOR',       qty: 1, weight: 400.0,   method: '구매품' },
+  { pno: 'WH102-KA500',  name: 'SNSG_WIRING',                  qty: 1, weight: 269.6,   method: '구매품' },
+  { pno: 'BP172-KA000',  name: 'BRKT-WATERTIGHT REINF FRT',   qty: 2, weight: 266.5,   method: '프레스' },
+  { pno: 'WH203-KA500',  name: '12V_HV CABLE',                 qty: 1, weight: 257.1,   method: '구매품' },
+  { pno: 'WH204-KA500',  name: '12V_P4 CABLE',                 qty: 1, weight: 237.2,   method: '구매품' },
+  { pno: 'WH101-KA500',  name: 'BMS EXTN_WIRING',              qty: 1, weight: 198.2,   method: '구매품' },
+  { pno: '11408-06186K', name: 'M6 FLANGE BOLT (M6X18)',       qty: 24, weight: 206.4,  method: 'H/W' },
+  { pno: 'WH201-KA500',  name: 'HV_NEGATIVE_CABLE',            qty: 1, weight: 143.3,   method: '구매품' },
+  { pno: '11403-06506K', name: 'M6 BOLT (L55)',                qty: 8, weight: 118.4,   method: 'H/W' },
+  { pno: 'BP174-KA000',  name: 'BRKT-WATERTIGHT REINF LH',    qty: 1, weight: 129.7,   method: '프레스' },
+  { pno: 'BP176-KA000',  name: 'BRKT-WATERTIGHT REINF RH',    qty: 1, weight: 117.3,   method: '프레스' },
+];
+
+const colors = {
+  'S/A': '#3b82f6', '사급': '#ef4444', '구매품': '#8b5cf6', 'H/W': '#22c55e', '프레스': '#f59e0b'
+};
+const tagClass = { 'S/A': 'sa', '사급': 'sagup', '구매품': 'purchase', 'H/W': 'hw', '프레스': 'hw' };
+
+const sorted = [...data].sort((a, b) => b.weight - a.weight);
+const top10 = sorted.slice(0, 10);
+const maxW = top10[0].weight;
+
+// Chart
+const chart = document.getElementById('chart');
+top10.forEach((item, i) => {
+  const pct = (item.weight / maxW * 100).toFixed(1);
+  const color = colors[item.method] || '#64748b';
+  chart.innerHTML += `
+    <div class="bar-row">
+      <div class="rank">${i+1}</div>
+      <div class="name" title="${item.name}">${item.name}</div>
+      <div class="bar-bg">
+        <div class="bar" style="width:${pct}%;background:${color}">
+          ${item.weight.toLocaleString()}g
+        </div>
+      </div>
+      <span class="method-tag ${tagClass[item.method]||'hw'}">${item.method}</span>
+    </div>`;
+});
+
+// Table
+const tbody = document.getElementById('table-body');
+sorted.forEach((item, i) => {
+  const color = colors[item.method] || '#64748b';
+  tbody.innerHTML += `
+    <tr>
+      <td><strong>${i+1}</strong></td>
+      <td class="pno">${item.pno}</td>
+      <td>${item.name}</td>
+      <td style="text-align:center">${item.qty}</td>
+      <td style="text-align:right;font-weight:bold">${item.weight.toLocaleString()}g</td>
+      <td><span class="method-tag ${tagClass[item.method]||'hw'}" style="background:${color}20;color:${color}">${item.method}</span></td>
+    </tr>`;
+});
+</script>
+</body>
+</html>
