@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>모터쇼 사진 분류기 (무료)</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg: #0f0f1a; --surface: #1a1a2e; --surface2: #16213e;
+            --accent: #4285f4; --accent2: #34a853; --text: #e2e8f0;
+            --muted: #94a3b8; --success: #10b981; --error: #ef4444;
+            --warning: #f59e0b; --border: #2d3748;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+        /* Header */
+        .header { background: linear-gradient(135deg, #0d1b2e, var(--surface)); border-bottom: 1px solid var(--border); padding: 1.25rem 2rem; display: flex; align-items: center; gap: 1rem; }
+        .header-icon { font-size: 2rem; }
+        .header-title { font-size: 1.5rem; font-weight: 700; background: linear-gradient(135deg, #4285f4, #34a853); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .header-sub { font-size: 0.82rem; color: var(--muted); margin-top: 2px; }
+        .free-badge { background: rgba(52,168,83,0.2); color: var(--success); border: 1px solid rgba(52,168,83,0.4); border-radius: 100px; padding: 0.2rem 0.65rem; font-size: 0.75rem; font-weight: 700; margin-left: auto; }
+
+        /* Layout */
+        .main { max-width: 1400px; margin: 0 auto; padding: 1.5rem 2rem; display: grid; gap: 1.25rem; }
+
+        /* Info Banner */
+        .info-banner { background: rgba(66,133,244,0.1); border: 1px solid rgba(66,133,244,0.3); border-radius: 10px; padding: 1rem 1.25rem; display: flex; gap: 1rem; align-items: flex-start; }
+        .info-banner-icon { font-size: 1.4rem; flex-shrink: 0; }
+        .info-banner-text { font-size: 0.85rem; line-height: 1.6; }
+        .info-banner-text strong { color: #4285f4; }
+        .info-banner-text a { color: #4285f4; }
+
+        /* Cards */
+        .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.4rem; }
+        .card-title { font-size: 0.95rem; font-weight: 600; color: #4285f4; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+
+        /* Setup */
+        .setup-grid { display: grid; grid-template-columns: 1.5fr 1fr 0.8fr; gap: 1rem; }
+        @media(max-width:768px) { .setup-grid { grid-template-columns: 1fr; } }
+        label { display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 0.35rem; }
+        input, select { width: 100%; padding: 0.6rem 0.8rem; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 0.88rem; outline: none; transition: border-color 0.2s; }
+        input:focus, select:focus { border-color: #4285f4; }
+        input[type="password"] { font-family: monospace; }
+        .hint { font-size: 0.75rem; color: var(--muted); margin-top: 0.3rem; }
+
+        /* Rate limit info */
+        .rate-info { background: var(--surface2); border-radius: 8px; padding: 0.8rem 1rem; font-size: 0.8rem; color: var(--muted); margin-top: 1rem; display: flex; gap: 1.5rem; flex-wrap: wrap; }
+        .rate-info span { display: flex; align-items: center; gap: 0.35rem; }
+        .rate-info strong { color: var(--success); }
+
+        /* Upload */
+        .upload-area { border: 2px dashed var(--border); border-radius: 12px; padding: 2.5rem 2rem; text-align: center; cursor: pointer; transition: all 0.2s; position: relative; }
+        .upload-area:hover { border-color: #4285f4; background: rgba(66,133,244,0.04); }
+        .upload-area input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+        .upload-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+        .upload-text { font-size: 1rem; color: var(--muted); }
+        .upload-hint { font-size: 0.78rem; color: var(--muted); margin-top: 0.4rem; opacity: 0.7; }
+        .file-count { margin-top: 0.75rem; font-size: 0.85rem; color: var(--success); }
+
+        /* Buttons */
+        .btn { padding: 0.6rem 1.1rem; border-radius: 8px; border: none; cursor: pointer; font-size: 0.88rem; font-weight: 600; transition: all 0.15s; display: inline-flex; align-items: center; gap: 0.4rem; }
+        .btn-primary { background: linear-gradient(135deg, #4285f4, #1a73e8); color: #fff; }
+        .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+        .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+        .btn-secondary:hover { border-color: #4285f4; }
+        .btn-danger { background: rgba(239,68,68,0.15); color: var(--error); border: 1px solid rgba(239,68,68,0.3); }
+        .btn-success { background: rgba(16,185,129,0.15); color: var(--success); border: 1px solid rgba(16,185,129,0.3); }
+        .btn-sm { padding: 0.35rem 0.7rem; font-size: 0.78rem; }
+
+        /* Stats */
+        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-bottom: 1rem; }
+        .stat-box { background: var(--surface2); border-radius: 8px; padding: 0.9rem; text-align: center; border: 1px solid var(--border); }
+        .stat-val { font-size: 1.7rem; font-weight: 700; }
+        .stat-label { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+
+        /* Progress */
+        .progress-bar { background: var(--surface2); border-radius: 100px; height: 7px; overflow: hidden; margin: 0.6rem 0; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #4285f4, #34a853); border-radius: 100px; transition: width 0.4s ease; }
+        .progress-info { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--muted); }
+
+        /* ETA */
+        .eta-bar { background: var(--surface2); border-radius: 8px; padding: 0.5rem 0.8rem; font-size: 0.8rem; color: var(--muted); margin-top: 0.5rem; display: flex; gap: 1.5rem; flex-wrap: wrap; }
+        .eta-bar strong { color: var(--text); }
+
+        /* Log */
+        .log { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 0.8rem; height: 130px; overflow-y: auto; font-family: monospace; font-size: 0.78rem; margin-top: 0.8rem; }
+        .log-entry { padding: 0.12rem 0; line-height: 1.5; }
+        .log-success { color: var(--success); }
+        .log-error   { color: var(--error); }
+        .log-info    { color: var(--muted); }
+        .log-warning { color: var(--warning); }
+
+        /* Status */
+        .status-badge { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.75rem; border-radius: 100px; font-size: 0.8rem; font-weight: 600; }
+        .s-idle    { background: var(--surface2); color: var(--muted); }
+        .s-running { background: rgba(66,133,244,0.12); color: #4285f4; }
+        .s-done    { background: rgba(16,185,129,0.12); color: var(--success); }
+        .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+        .s-running .dot { animation: pulse 1.2s infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+        /* Action bar */
+        .action-bar { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-top: 0.9rem; }
+
+        /* Tabs */
+        .tabs { display: flex; gap: 0.4rem; border-bottom: 1px solid var(--border); padding-bottom: 0.6rem; margin-bottom: 1rem; }
+        .tab { padding: 0.45rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.88rem; color: var(--muted); transition: all 0.15s; }
+        .tab.active { background: #4285f4; color: #fff; font-weight: 600; }
+        .tab:not(.active):hover { color: var(--text); }
+
+        /* Filter */
+        .filter-bar { display: flex; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 1rem; }
+        .filter-bar select { width: auto; min-width: 130px; }
+
+        /* Tree */
+        .tree-hall { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.6rem; overflow: hidden; }
+        .tree-hall-header { background: var(--surface2); padding: 0.7rem 1rem; cursor: pointer; display: flex; align-items: center; justify-content: space-between; font-weight: 600; user-select: none; }
+        .tree-hall-header:hover { background: #1c2940; }
+        .tree-hall-body.collapsed { display: none; }
+        .tree-company { border-top: 1px solid var(--border); }
+        .tree-company-header { padding: 0.55rem 1rem 0.55rem 2rem; display: flex; align-items: center; justify-content: space-between; color: #60a5fa; }
+        .tree-models { padding: 0.3rem 0 0.3rem 3.5rem; }
+        .tree-model { display: flex; align-items: center; justify-content: space-between; padding: 0.2rem 0; font-size: 0.85rem; color: var(--muted); }
+        .badge { background: var(--surface2); border: 1px solid var(--border); border-radius: 100px; padding: 0.1rem 0.55rem; font-size: 0.72rem; color: #4285f4; }
+
+        /* Grid */
+        .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 0.9rem; }
+        .photo-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; transition: transform 0.15s, border-color 0.15s; }
+        .photo-card:hover { transform: translateY(-2px); border-color: rgba(66,133,244,0.5); }
+        .photo-thumb { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; background: #0d1b2e; }
+        .photo-thumb-ph { width: 100%; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; font-size: 2rem; background: #0d1b2e; }
+        .photo-meta { padding: 0.55rem 0.6rem; }
+        .photo-filename { font-size: 0.75rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .photo-tags { font-size: 0.72rem; color: var(--muted); margin-top: 0.25rem; line-height: 1.65; }
+        .conf-high   { color: var(--success); }
+        .conf-medium { color: var(--warning); }
+        .conf-low    { color: var(--error); }
+
+        /* Empty */
+        .empty { text-align: center; padding: 3rem; color: var(--muted); }
+        .empty-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+
+        /* Modal */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 1000; }
+        .modal-overlay.open { display: flex; }
+        .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; width: 440px; max-width: 90vw; }
+        .modal-title { font-size: 1rem; font-weight: 600; margin-bottom: 1.1rem; }
+        .modal-field { margin-bottom: 0.9rem; }
+        .modal-actions { display: flex; gap: 0.6rem; justify-content: flex-end; margin-top: 1.25rem; }
+
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="header-icon">🚗</div>
+    <div>
+        <div class="header-title">모터쇼 사진 분류기</div>
+        <div class="header-sub">Google Gemini AI — 전시관 · 제조사 · 차종 자동 분류</div>
+    </div>
+    <span class="free-badge">✅ 완전 무료</span>
+</div>
+
+<div class="main">
+
+    <!-- 안내 배너 -->
+    <div class="info-banner">
+        <div class="info-banner-icon">ℹ️</div>
+        <div class="info-banner-text">
+            <strong>무료 API 키 발급 방법</strong> →
+            <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a>
+            접속 → Google 계정 로그인 → <strong>Create API Key</strong> 클릭 → 키 복사<br>
+            무료 한도: 하루 <strong>1,500회</strong> · 분당 <strong>15회</strong> (카드 등록 불필요)
+        </div>
+    </div>
+
+    <!-- 설정 -->
+    <div class="card">
+        <div class="card-title">⚙️ 설정</div>
+        <div class="setup-grid">
+            <div>
+                <label>Google AI Studio API Key</label>
+                <input type="password" id="apiKey" placeholder="AIza..." autocomplete="off">
+                <div class="hint">🔒 키는 브라우저에만 저장, 외부 전송 없음</div>
+            </div>
+            <div>
+                <label>모델 선택</label>
+                <select id="model">
+                    <option value="gemini-2.0-flash" selected>Gemini 2.0 Flash (추천)</option>
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                    <option value="gemini-1.5-flash-8b">Gemini 1.5 Flash-8B (더 빠름)</option>
+                </select>
+                <div class="hint">모든 모델 무료 티어 제공</div>
+            </div>
+            <div>
+                <label>배치 크기 (동시 처리)</label>
+                <select id="batchSize">
+                    <option value="1">1장 (안전)</option>
+                    <option value="2" selected>2장 (추천)</option>
+                    <option value="3">3장 (빠름)</option>
+                </select>
+                <div class="hint" id="delayHint">요청 간 5초 대기 자동 적용</div>
+            </div>
+        </div>
+        <div class="rate-info">
+            <span>⚡ 무료 한도</span>
+            <span>📅 하루 <strong>1,500회</strong></span>
+            <span>⏱ 분당 <strong>15회</strong></span>
+            <span>💾 약 750장/시간 처리 가능</span>
+        </div>
+    </div>
+
+    <!-- 사진 선택 -->
+    <div class="card">
+        <div class="card-title">📁 사진 선택</div>
+        <div class="upload-area">
+            <input type="file" id="fileInput" multiple accept="image/*" webkitdirectory>
+            <div class="upload-icon">📂</div>
+            <div class="upload-text">클릭하여 폴더 선택 (또는 파일 여러 개 선택)</div>
+            <div class="upload-hint">JPG · PNG · WEBP · GIF 등 — 하위 폴더 포함 전체 선택 가능</div>
+        </div>
+        <div class="file-count" id="fileCount"></div>
+    </div>
+
+    <!-- 처리 현황 -->
+    <div class="card" id="processingCard" style="display:none;">
+        <div class="card-title">⚡ 처리 현황</div>
+        <div class="stats-row">
+            <div class="stat-box">
+                <div class="stat-val" id="statTotal">0</div>
+                <div class="stat-label">전체</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-val" id="statDone" style="color:var(--success);">0</div>
+                <div class="stat-label">완료</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-val" id="statFail" style="color:var(--error);">0</div>
+                <div class="stat-label">실패</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-val" id="statLeft" style="color:var(--warning);">0</div>
+                <div class="stat-label">남음</div>
+            </div>
+        </div>
+
+        <div class="progress-bar">
+            <div class="progress-fill" id="progFill" style="width:0%"></div>
+        </div>
+        <div class="progress-info">
+            <span id="progText">준비 중...</span>
+            <span id="progPct">0%</span>
+        </div>
+
+        <div class="eta-bar" id="etaBar" style="display:none;">
+            <span>⏱ 경과: <strong id="elapsed">0:00</strong></span>
+            <span>🏁 예상 남은 시간: <strong id="etaLeft">계산 중...</strong></span>
+            <span>⚡ 처리 속도: <strong id="speed">-</strong></span>
+        </div>
+
+        <div class="log" id="log"></div>
+
+        <div class="action-bar">
+            <button class="btn btn-primary" id="startBtn" onclick="startProcessing()">▶ 분류 시작</button>
+            <button class="btn btn-secondary" id="pauseBtn" onclick="togglePause()" style="display:none;">⏸ 일시정지</button>
+            <button class="btn btn-danger" id="stopBtn" onclick="stopProcessing()" style="display:none;">■ 중지</button>
+            <span class="status-badge s-idle" id="statusBadge"><span class="dot"></span> 대기 중</span>
+        </div>
+    </div>
+
+    <!-- 결과 -->
+    <div class="card" id="resultsCard" style="display:none;">
+        <div class="card-title">📊 분류 결과</div>
+        <div class="filter-bar">
+            <select id="fHall" onchange="applyFilter()"><option value="">🏛 전시관 전체</option></select>
+            <select id="fCompany" onchange="applyFilter()"><option value="">🏭 제조사 전체</option></select>
+            <select id="fModel" onchange="applyFilter()"><option value="">🚗 차종 전체</option></select>
+            <button class="btn btn-secondary btn-sm" onclick="resetFilter()">필터 초기화</button>
+        </div>
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('tree', this)">🌳 트리 보기</div>
+            <div class="tab" onclick="switchTab('grid', this)">🖼 사진 보기</div>
+        </div>
+        <div id="treeView"></div>
+        <div id="gridView" style="display:none;"></div>
+        <div class="action-bar" style="margin-top:1.25rem;">
+            <button class="btn btn-success" onclick="exportCSV()">📄 CSV 저장 (엑셀)</button>
+            <button class="btn btn-secondary" onclick="exportJSON()">📋 JSON 저장</button>
+            <button class="btn btn-secondary" onclick="resetApp()">🔄 새로 시작</button>
+        </div>
+    </div>
+
+</div>
+
+<!-- 수정 모달 -->
+<div class="modal-overlay" id="editModal" onclick="onOverlayClick(event)">
+    <div class="modal">
+        <div class="modal-title">✏️ 분류 수정</div>
+        <input type="hidden" id="editIdx">
+        <div class="modal-field">
+            <label>파일명</label>
+            <input type="text" id="editFilename" readonly style="opacity:.5;">
+        </div>
+        <div class="modal-field">
+            <label>전시관</label>
+            <input type="text" id="editHall" placeholder="예: Hall A, 1관, B전시관">
+        </div>
+        <div class="modal-field">
+            <label>제조사 / 브랜드</label>
+            <input type="text" id="editCompany" placeholder="예: Toyota, BMW, 현대, 기아">
+        </div>
+        <div class="modal-field">
+            <label>차종 / 모델명</label>
+            <input type="text" id="editCarModel" placeholder="예: Supra, M4, 아이오닉6">
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+            <button class="btn btn-primary" onclick="saveEdit()">저장</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════
+const S = {
+    files: [], results: [],
+    processing: false, paused: false, stopped: false,
+    currentTab: 'tree',
+    startTime: null, processedCount: 0,
+};
+
+// ══════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+    const k = localStorage.getItem('_gemini_key');
+    if (k) document.getElementById('apiKey').value = k;
+});
+document.getElementById('apiKey').addEventListener('input', e =>
+    localStorage.setItem('_gemini_key', e.target.value.trim())
+);
+document.getElementById('fileInput').addEventListener('change', handleFiles);
+
+// ══════════════════════════════════════════
+// FILE HANDLING
+// ══════════════════════════════════════════
+function handleFiles(e) {
+    const imgs = Array.from(e.target.files).filter(f =>
+        f.type.startsWith('image/') || /\.(jpe?g|png|gif|webp|bmp|tiff?)$/i.test(f.name)
+    );
+    if (!imgs.length) { alert('이미지 파일이 없습니다.'); return; }
+
+    S.files = imgs;
+    S.results = imgs.map(f => ({
+        file: f, filename: f.name,
+        path: f.webkitRelativePath || f.name,
+        status: 'pending', result: null, error: null, thumb: null,
+    }));
+
+    const bytes = imgs.reduce((a, f) => a + f.size, 0);
+    document.getElementById('fileCount').textContent =
+        `✅ ${imgs.length}장 선택됨  ·  ${fmtBytes(bytes)}`;
+
+    document.getElementById('processingCard').style.display = '';
+    document.getElementById('statTotal').textContent = imgs.length;
+    document.getElementById('statLeft').textContent  = imgs.length;
+    setStatus('idle', '분류 시작 버튼을 누르세요');
+}
+
+function fmtBytes(b) {
+    return b < 1048576 ? (b/1024).toFixed(1)+' KB' : (b/1048576).toFixed(1)+' MB';
+}
+
+// ══════════════════════════════════════════
+// IMAGE UTILS
+// ══════════════════════════════════════════
+function resizeToBase64(file, maxPx = 1024) {
+    return new Promise((res, rej) => {
+        const img = new Image(), url = URL.createObjectURL(file);
+        img.onload = () => {
+            let {width: w, height: h} = img;
+            if (w > maxPx || h > maxPx) {
+                if (w > h) { h = Math.round(h/w*maxPx); w = maxPx; }
+                else       { w = Math.round(w/h*maxPx); h = maxPx; }
+            }
+            const c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            c.getContext('2d').drawImage(img, 0, 0, w, h);
+            URL.revokeObjectURL(url);
+            res(c.toDataURL('image/jpeg', 0.82).split(',')[1]);
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('이미지 로드 실패')); };
+        img.src = url;
+    });
+}
+
+function makeThumbnail(file) {
+    return new Promise(res => {
+        const img = new Image(), url = URL.createObjectURL(file);
+        img.onload = () => {
+            let {width: w, height: h} = img;
+            const max = 220;
+            if (w > h) { h = Math.round(h/w*max); w = max; }
+            else       { w = Math.round(w/h*max); h = max; }
+            const c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            c.getContext('2d').drawImage(img, 0, 0, w, h);
+            URL.revokeObjectURL(url);
+            res(c.toDataURL('image/jpeg', 0.72));
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); res(null); };
+        img.src = url;
+    });
+}
+
+// ══════════════════════════════════════════
+// GEMINI API CALL
+// ══════════════════════════════════════════
+const PROMPT = `이 이미지는 자동차 모터쇼 박람회에서 찍은 사진입니다.
+
+다음 JSON만 반환하세요 (다른 텍스트 없이):
+{
+  "exhibition_hall": "전시관 이름 또는 번호 (예: Hall A, 1관, B관). 알 수 없으면 미확인",
+  "company": "자동차 제조사/브랜드 (예: Toyota, BMW, 현대, 기아). 알 수 없으면 미확인",
+  "car_model": "차종/모델명 (예: GR Supra, M4, 아이오닉6). 알 수 없으면 미확인",
+  "confidence": "high 또는 medium 또는 low",
+  "description": "이미지 한 줄 설명"
+}
+
+힌트: 부스 간판, 로고, 엠블럼, 배너를 단서로 활용하세요.
+반드시 JSON만 출력하고 다른 텍스트를 포함하지 마세요.`;
+
+async function analyzeImage(file, maxRetry = 3) {
+    const apiKey = document.getElementById('apiKey').value.trim();
+    const model  = document.getElementById('model').value;
+    const b64 = await resizeToBase64(file);
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    for (let attempt = 0; attempt <= maxRetry; attempt++) {
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [
+                            { inline_data: { mime_type: 'image/jpeg', data: b64 } },
+                            { text: PROMPT }
+                        ]
+                    }],
+                    generationConfig: { maxOutputTokens: 350, temperature: 0.1 }
+                })
+            });
+
+            // Rate limit → wait and retry
+            if (res.status === 429) {
+                const waitSec = attempt === 0 ? 10 : 20 * attempt;
+                addLog(`⏳ 분당 요청 한도 초과 — ${waitSec}초 대기 후 재시도...`, 'warning');
+                await sleep(waitSec * 1000);
+                continue;
+            }
+
+            if (!res.ok) {
+                const txt = await res.text();
+                throw new Error(`HTTP ${res.status}: ${txt.slice(0, 120)}`);
+            }
+
+            const data = await res.json();
+            const raw  = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            const m    = raw.match(/\{[\s\S]*?\}/);
+            if (!m) throw new Error('JSON 없음: ' + raw.slice(0, 80));
+            return JSON.parse(m[0]);
+
+        } catch (e) {
+            if (attempt < maxRetry) { await sleep(2000); continue; }
+            throw e;
+        }
+    }
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ══════════════════════════════════════════
+// PROCESSING
+// ══════════════════════════════════════════
+async function startProcessing() {
+    const key = document.getElementById('apiKey').value.trim();
+    if (!key)              { alert('API Key를 입력해주세요.\n\nhttps://aistudio.google.com/apikey 에서 무료 발급 가능합니다.'); return; }
+    if (!S.files.length)   { alert('처리할 파일이 없습니다.'); return; }
+
+    S.processing = true; S.paused = false; S.stopped = false;
+    S.startTime = Date.now(); S.processedCount = 0;
+
+    document.getElementById('startBtn').style.display = 'none';
+    document.getElementById('pauseBtn').style.display = '';
+    document.getElementById('stopBtn').style.display  = '';
+    document.getElementById('etaBar').style.display   = '';
+    setStatus('running', '분류 진행 중...');
+
+    const batchSize = parseInt(document.getElementById('batchSize').value);
+    // 분당 15회 한도: 배치별 최소 대기 시간
+    // batchSize=1→4s, 2→8s, 3→12s → 약 14회/분 (여유있게)
+    const BATCH_DELAY = batchSize * 4 * 1000;
+
+    const pending = S.results.filter(r => r.status === 'pending');
+    let done = 0, fail = 0;
+    let timerInterval = setInterval(updateETA, 1000);
+
+    const updateBar = () => {
+        const total = S.results.length;
+        const processed = done + fail;
+        const pct = total ? Math.round(processed / total * 100) : 0;
+        S.processedCount = processed;
+        document.getElementById('statDone').textContent = done;
+        document.getElementById('statFail').textContent = fail;
+        document.getElementById('statLeft').textContent = total - processed;
+        document.getElementById('progFill').style.width = pct + '%';
+        document.getElementById('progPct').textContent  = pct + '%';
+        document.getElementById('progText').textContent =
+            `${processed} / ${total}장 처리 완료`;
+    };
+
+    for (let i = 0; i < pending.length; i += batchSize) {
+        if (S.stopped) break;
+        while (S.paused) { await sleep(400); if (S.stopped) break; }
+        if (S.stopped) break;
+
+        const batch = pending.slice(i, i + batchSize);
+
+        await Promise.all(batch.map(async item => {
+            try {
+                addLog(`분석: ${item.filename}`, 'info');
+                item.thumb  = await makeThumbnail(item.file);
+                item.result = await analyzeImage(item.file);
+                item.status = 'done';
+                done++;
+                const r = item.result;
+                addLog(`✓ ${item.filename} → ${r.exhibition_hall} / ${r.company} / ${r.car_model}`, 'success');
+            } catch (e) {
+                item.status = 'failed';
+                item.error  = e.message;
+                fail++;
+                addLog(`✗ ${item.filename}: ${e.message}`, 'error');
+            }
+            updateBar();
+        }));
+
+        // 다음 배치 전 대기 (Rate limit 준수)
+        if (i + batchSize < pending.length && !S.stopped) {
+            addLog(`⏳ 다음 배치까지 ${BATCH_DELAY/1000}초 대기 (무료 한도 보호)...`, 'info');
+            await sleep(BATCH_DELAY);
+        }
+    }
+
+    clearInterval(timerInterval);
+    S.processing = false;
+    document.getElementById('pauseBtn').style.display = 'none';
+    document.getElementById('stopBtn').style.display  = 'none';
+    document.getElementById('startBtn').style.display = '';
+    document.getElementById('startBtn').textContent   = '↺ 다시 시작';
+
+    if (S.stopped) {
+        setStatus('idle', '중지됨');
+        addLog('─── 처리 중지 ───', 'warning');
+    } else {
+        setStatus('done', `완료 · ${done}장 성공 · ${fail}장 실패`);
+        addLog('─── 모든 처리 완료 ───', 'success');
+    }
+    showResults();
+}
+
+function togglePause() {
+    S.paused = !S.paused;
+    document.getElementById('pauseBtn').textContent = S.paused ? '▶ 재개' : '⏸ 일시정지';
+    setStatus(S.paused ? 'idle' : 'running', S.paused ? '일시정지됨' : '분류 진행 중...');
+}
+
+function stopProcessing() {
+    if (confirm('처리를 중지할까요?')) { S.stopped = true; S.paused = false; }
+}
+
+// ── ETA 업데이트 ──
+function updateETA() {
+    if (!S.startTime) return;
+    const elapsed = (Date.now() - S.startTime) / 1000;
+    const total   = S.results.length;
+    const done    = S.processedCount;
+    const left    = total - done;
+    const speed   = done > 0 ? done / elapsed : 0;
+    const etaSec  = speed > 0 ? left / speed : 0;
+
+    document.getElementById('elapsed').textContent  = fmtTime(elapsed);
+    document.getElementById('speed').textContent    = done > 0 ? `${(speed * 60).toFixed(1)}장/분` : '-';
+    document.getElementById('etaLeft').textContent  = done > 0 ? fmtTime(etaSec) : '계산 중...';
+}
+
+function fmtTime(sec) {
+    const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+    return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+// ══════════════════════════════════════════
+// LOG & STATUS
+// ══════════════════════════════════════════
+function addLog(msg, type = 'info') {
+    const log = document.getElementById('log');
+    const d = document.createElement('div');
+    d.className = `log-entry log-${type}`;
+    d.textContent = `[${new Date().toLocaleTimeString('ko')}] ${msg}`;
+    log.appendChild(d);
+    log.scrollTop = log.scrollHeight;
+}
+
+function setStatus(type, msg) {
+    const el = document.getElementById('statusBadge');
+    el.className = `status-badge s-${type === 'done' ? 'done' : type === 'running' ? 'running' : 'idle'}`;
+    el.innerHTML = `<span class="dot"></span> ${msg}`;
+}
+
+// ══════════════════════════════════════════
+// RESULTS
+// ══════════════════════════════════════════
+function showResults() {
+    if (!S.results.some(r => r.status === 'done')) return;
+    document.getElementById('resultsCard').style.display = '';
+    populateFilters();
+    renderTree();
+    renderGrid();
+}
+
+function populateFilters() {
+    const done = S.results.filter(r => r.result);
+    const uniq = key => [...new Set(done.map(r => r.result[key]))].sort();
+    const fill = (id, items, label) => {
+        document.getElementById(id).innerHTML =
+            `<option value="">${label} 전체</option>` +
+            items.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+    };
+    fill('fHall',    uniq('exhibition_hall'), '🏛 전시관');
+    fill('fCompany', uniq('company'),         '🏭 제조사');
+    fill('fModel',   uniq('car_model'),       '🚗 차종');
+}
+
+function getFiltered() {
+    const h = document.getElementById('fHall').value;
+    const c = document.getElementById('fCompany').value;
+    const m = document.getElementById('fModel').value;
+    return S.results.filter(r => {
+        if (!r.result) return false;
+        if (h && r.result.exhibition_hall !== h) return false;
+        if (c && r.result.company         !== c) return false;
+        if (m && r.result.car_model       !== m) return false;
+        return true;
+    });
+}
+
+function applyFilter()  { renderTree(); renderGrid(); }
+function resetFilter()  {
+    ['fHall','fCompany','fModel'].forEach(id => document.getElementById(id).value = '');
+    applyFilter();
+}
+
+// ── Tree ──
+function renderTree() {
+    const filtered = getFiltered();
+    const el = document.getElementById('treeView');
+    if (!filtered.length) { el.innerHTML = emptyHTML('🔍', '필터 조건에 맞는 사진이 없습니다'); return; }
+
+    const tree = {};
+    filtered.forEach(r => {
+        const h = r.result.exhibition_hall || '미확인';
+        const c = r.result.company         || '미확인';
+        const m = r.result.car_model       || '미확인';
+        if (!tree[h])       tree[h]       = {};
+        if (!tree[h][c])    tree[h][c]    = {};
+        if (!tree[h][c][m]) tree[h][c][m] = 0;
+        tree[h][c][m]++;
+    });
+
+    let html = '';
+    Object.entries(tree).sort().forEach(([hall, cmap]) => {
+        const total = Object.values(cmap).reduce((s, mmap) =>
+            s + Object.values(mmap).reduce((a, n) => a + n, 0), 0);
+
+        html += `<div class="tree-hall">
+<div class="tree-hall-header" onclick="toggleBody(this)">
+  <span>🏛 ${esc(hall)}</span>
+  <span><span class="badge">${total}장</span> <span style="font-size:.8rem;margin-left:.3rem;">▼</span></span>
+</div>
+<div class="tree-hall-body">`;
+
+        Object.entries(cmap).sort().forEach(([company, mmap]) => {
+            const cTotal = Object.values(mmap).reduce((a, n) => a + n, 0);
+            html += `<div class="tree-company">
+<div class="tree-company-header">
+  <span>🏭 ${esc(company)}</span>
+  <span class="badge">${cTotal}장</span>
+</div>
+<div class="tree-models">`;
+            Object.entries(mmap).sort().forEach(([model, cnt]) => {
+                html += `<div class="tree-model">
+  <span>🚗 ${esc(model)}</span>
+  <span class="badge">${cnt}장</span>
+</div>`;
+            });
+            html += '</div></div>';
+        });
+        html += '</div></div>';
+    });
+
+    el.innerHTML = html;
+}
+
+function toggleBody(header) {
+    const body  = header.nextElementSibling;
+    const arrow = header.querySelector('span:last-child span:last-child');
+    body.classList.toggle('collapsed');
+    if (arrow) arrow.textContent = body.classList.contains('collapsed') ? '▶' : '▼';
+}
+
+// ── Grid ──
+function renderGrid() {
+    const filtered = getFiltered();
+    const el = document.getElementById('gridView');
+    if (!filtered.length) { el.innerHTML = emptyHTML('🔍', '필터 조건에 맞는 사진이 없습니다'); return; }
+
+    el.innerHTML = '<div class="photo-grid">' + filtered.map(r => {
+        const idx  = S.results.indexOf(r);
+        const conf = r.result?.confidence || 'low';
+        const cc   = conf === 'high' ? 'conf-high' : conf === 'medium' ? 'conf-medium' : 'conf-low';
+        const ci   = conf === 'high' ? '🟢' : conf === 'medium' ? '🟡' : '🔴';
+        const thumb = r.thumb
+            ? `<img class="photo-thumb" src="${r.thumb}" alt="${esc(r.filename)}" loading="lazy">`
+            : `<div class="photo-thumb-ph">📷</div>`;
+
+        return `<div class="photo-card" title="${esc(r.result?.description||'')}">
+${thumb}
+<div class="photo-meta">
+  <div class="photo-filename" title="${esc(r.filename)}">${esc(r.filename)}</div>
+  <div class="photo-tags">
+    <div>🏛 ${esc(r.result?.exhibition_hall||'미확인')}</div>
+    <div>🏭 ${esc(r.result?.company||'미확인')}</div>
+    <div>🚗 ${esc(r.result?.car_model||'미확인')}</div>
+    <div class="${cc}" style="margin-top:2px;">${ci} ${conf==='high'?'높음':conf==='medium'?'보통':'낮음'}</div>
+  </div>
+  <button class="btn btn-secondary btn-sm" style="width:100%;margin-top:6px;" onclick="openEdit(${idx})">✏️ 수정</button>
+</div>
+</div>`;
+    }).join('') + '</div>';
+}
+
+// ══════════════════════════════════════════
+// TABS
+// ══════════════════════════════════════════
+function switchTab(tab, el) {
+    S.currentTab = tab;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('treeView').style.display = tab === 'tree' ? '' : 'none';
+    document.getElementById('gridView').style.display = tab === 'grid' ? '' : 'none';
+}
+
+// ══════════════════════════════════════════
+// EDIT MODAL
+// ══════════════════════════════════════════
+function openEdit(idx) {
+    const r = S.results[idx];
+    if (!r?.result) return;
+    document.getElementById('editIdx').value      = idx;
+    document.getElementById('editFilename').value = r.filename;
+    document.getElementById('editHall').value     = r.result.exhibition_hall || '';
+    document.getElementById('editCompany').value  = r.result.company         || '';
+    document.getElementById('editCarModel').value = r.result.car_model       || '';
+    document.getElementById('editModal').classList.add('open');
+}
+function closeModal() { document.getElementById('editModal').classList.remove('open'); }
+function onOverlayClick(e) { if (e.target.id === 'editModal') closeModal(); }
+function saveEdit() {
+    const idx = parseInt(document.getElementById('editIdx').value);
+    const r   = S.results[idx];
+    if (!r?.result) return;
+    r.result.exhibition_hall = document.getElementById('editHall').value.trim()     || '미확인';
+    r.result.company         = document.getElementById('editCompany').value.trim()  || '미확인';
+    r.result.car_model       = document.getElementById('editCarModel').value.trim() || '미확인';
+    closeModal(); populateFilters(); renderTree(); renderGrid();
+}
+
+// ══════════════════════════════════════════
+// EXPORT
+// ══════════════════════════════════════════
+function exportCSV() {
+    const rows = S.results.filter(r => r.result);
+    if (!rows.length) { alert('내보낼 결과가 없습니다.'); return; }
+    const hdr = ['파일명','경로','전시관','제조사','차종','신뢰도','설명'];
+    const csv = '\uFEFF' + [hdr, ...rows.map(r => [
+        r.filename, r.path,
+        r.result.exhibition_hall, r.result.company, r.result.car_model,
+        r.result.confidence, r.result.description || '',
+    ])].map(row => row.map(v => `"${String(v||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+    dl(csv, 'motorshow_분류결과.csv', 'text/csv;charset=utf-8;');
+}
+function exportJSON() {
+    const rows = S.results.filter(r => r.result);
+    if (!rows.length) { alert('내보낼 결과가 없습니다.'); return; }
+    dl(JSON.stringify(rows.map(r => ({
+        filename: r.filename, path: r.path,
+        exhibition_hall: r.result.exhibition_hall,
+        company: r.result.company, car_model: r.result.car_model,
+        confidence: r.result.confidence, description: r.result.description,
+    })), null, 2), 'motorshow_분류결과.json', 'application/json');
+}
+function dl(content, name, mime) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([content], {type: mime}));
+    a.download = name; a.click();
+}
+
+// ══════════════════════════════════════════
+// RESET
+// ══════════════════════════════════════════
+function resetApp() {
+    if (!confirm('초기화하고 새로 시작하시겠습니까?')) return;
+    Object.assign(S, {files:[], results:[], processing:false, paused:false, stopped:false, startTime:null, processedCount:0});
+    document.getElementById('fileInput').value       = '';
+    document.getElementById('fileCount').textContent = '';
+    document.getElementById('processingCard').style.display = 'none';
+    document.getElementById('resultsCard').style.display    = 'none';
+    document.getElementById('log').innerHTML = '';
+    document.getElementById('etaBar').style.display  = 'none';
+    document.getElementById('startBtn').textContent  = '▶ 분류 시작';
+    document.getElementById('startBtn').style.display = '';
+    document.getElementById('pauseBtn').style.display = 'none';
+    document.getElementById('stopBtn').style.display  = 'none';
+    setStatus('idle', '대기 중');
+}
+
+// ══════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════
+function esc(str) {
+    return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function emptyHTML(icon, msg) {
+    return `<div class="empty"><div class="empty-icon">${icon}</div><div>${msg}</div></div>`;
+}
+</script>
+</body>
+</html>
