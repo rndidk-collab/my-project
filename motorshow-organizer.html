@@ -1250,48 +1250,24 @@ async function analyzeURL() {
         let content = '', sourceTitle = url, ytThumb = null;
 
         if (urlType === 'youtube') {
-            // 1) oEmbed로 제목·채널 가져오기
-            addUrlLog('YouTube 영상 정보 가져오는 중...', 'info');
             const vid = extractYouTubeId(url);
-            ytThumb = vid ? `https://img.youtube.com/vi/${vid}/mqdefault.jpg` : null;
+            if (!vid) throw new Error('YouTube 영상 ID를 인식하지 못했습니다. URL을 확인해주세요.');
+            ytThumb = `https://img.youtube.com/vi/${vid}/mqdefault.jpg`;
 
-            const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`).catch(() => null);
-            if (oembedRes?.ok) {
-                const oe = await oembedRes.json();
-                sourceTitle = oe.title || sourceTitle;
-                content = `제목: ${oe.title}\n채널: ${oe.author_name}`;
-                addUrlLog(`영상 제목: ${oe.title}`, 'success');
-            } else {
-                addUrlLog('영상 제목을 가져오지 못했습니다. URL을 확인해주세요.', 'warning');
-            }
+            const ytData = await fetchYouTubeData(vid);
+            sourceTitle = ytData.title || url;
 
-            // 2) CORS 프록시로 영상 설명 수집 시도
-            addUrlLog('영상 설명 수집 중...', 'info');
-            const pageText = await fetchViaProxy(url);
-            let desc = '';
-            if (pageText) {
-                // 여러 패턴 시도
-                const patterns = [
-                    /"shortDescription":"((?:[^"\\]|\\.)*)"/,
-                    /"description":\{"simpleText":"([\s\S]{0,3000}?)"\}/,
-                    /attributedDescription.*?"content":"([\s\S]{0,3000}?)"/,
-                ];
-                for (const pat of patterns) {
-                    const m = pageText.match(pat);
-                    if (m && m[1].length > 20) {
-                        desc = m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').slice(0, 2000);
-                        break;
-                    }
-                }
-            }
-            if (desc) {
-                content += '\n\n영상 설명:\n' + desc;
-                addUrlLog(`영상 설명 ${desc.length}자 수집 완료`, 'success');
-            } else {
-                content += '\n\n(영상 설명 수집 불가 — YouTube 차단. 제목 기반으로만 분석합니다)';
-                addUrlLog('⚠️ YouTube 설명 수집 불가 — 제목만으로 분석 (정확도 낮을 수 있음)', 'warning');
-                addUrlLog('💡 더 정확한 분석을 원하면 박람회 공식 사이트나 뉴스 기사 URL을 사용하세요', 'info');
-            }
+            // 수집된 데이터 조합
+            const parts = [];
+            if (ytData.title)       parts.push(`제목: ${ytData.title}`);
+            if (ytData.channel)     parts.push(`채널: ${ytData.channel}`);
+            if (ytData.description) parts.push(`영상 설명:\n${ytData.description}`);
+            if (ytData.captions)    parts.push(`자막(일부):\n${ytData.captions}`);
+            content = parts.join('\n\n') || '(영상 정보 수집 실패)';
+
+            addUrlLog(`수집 완료 — 제목 ${ytData.title ? '✓' : '✗'} · 설명 ${ytData.description ? '✓' : '✗'} · 자막 ${ytData.captions ? '✓' : '✗'}`, ytData.description || ytData.captions ? 'success' : 'warning');
+            if (!ytData.description && !ytData.captions)
+                addUrlLog('💡 자막·설명이 없는 영상은 정확도가 낮을 수 있습니다', 'info');
         } else {
             // 일반 웹사이트
             addUrlLog('웹페이지 내용 가져오는 중...', 'info');
@@ -1344,6 +1320,69 @@ async function analyzeURL() {
         btn.disabled = false;
         btn.textContent = '🔍 분석';
     }
+}
+
+// ── YouTube 전용 데이터 수집 (설명 + 자막) ──
+async function fetchYouTubeData(vid) {
+    const data = { title: '', channel: '', description: '', captions: '' };
+
+    // 1) oEmbed — 제목·채널 (가장 안정적)
+    try {
+        const res = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${vid}&format=json`);
+        if (res.ok) { const d = await res.json(); data.title = d.title || ''; data.channel = d.author_name || ''; }
+    } catch {}
+    addUrlLog(`제목: ${data.title || '가져오기 실패'}`, data.title ? 'success' : 'warning');
+
+    // 2) Piped API — 영상 설명 전체 (여러 인스턴스 순서대로 시도)
+    addUrlLog('영상 설명 수집 중 (Piped API)...', 'info');
+    const pipedHosts = [
+        'https://pipedapi.kavin.rocks',
+        'https://piped-api.garudalinux.org',
+        'https://api.piped.projectsegfau.lt',
+        'https://pipedapi.adminforge.de',
+    ];
+    for (const host of pipedHosts) {
+        try {
+            const res = await fetch(`${host}/streams/${vid}`, { signal: AbortSignal.timeout(6000) });
+            if (res.ok) {
+                const d = await res.json();
+                data.description = (d.description || '').slice(0, 3000);
+                data.title    = data.title    || d.title    || '';
+                data.channel  = data.channel  || d.uploader || '';
+                if (data.description) { addUrlLog(`영상 설명 ${data.description.length}자 수집 완료`, 'success'); break; }
+            }
+        } catch {}
+    }
+    if (!data.description) addUrlLog('영상 설명 수집 실패 (Piped 연결 안됨)', 'warning');
+
+    // 3) YouTube 자막 API (timedtext) — CORS 허용 공개 API
+    addUrlLog('자막 수집 중...', 'info');
+    const captionLangs = ['ko', 'en', 'ja', 'zh-Hans'];
+    for (const lang of captionLangs) {
+        try {
+            const res = await fetch(`https://www.youtube.com/api/timedtext?lang=${lang}&v=${vid}&fmt=json3`, { signal: AbortSignal.timeout(5000) });
+            if (res.ok) {
+                const d = await res.json();
+                const events = d.events || [];
+                const text = events.flatMap(e => (e.segs || []).map(s => s.utf8 || '')).join(' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
+                if (text.length > 50) { data.captions = `[${lang} 자막]\n` + text; addUrlLog(`자막(${lang}) ${text.length}자 수집 완료`, 'success'); break; }
+            }
+        } catch {}
+        // xml 형식도 시도
+        try {
+            const res = await fetch(`https://www.youtube.com/api/timedtext?lang=${lang}&v=${vid}`, { signal: AbortSignal.timeout(5000) });
+            if (res.ok) {
+                const xml = await res.text();
+                if (xml.includes('<text')) {
+                    const text = xml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
+                    if (text.length > 50) { data.captions = `[${lang} 자막]\n` + text; addUrlLog(`자막(${lang}) ${text.length}자 수집 완료`, 'success'); break; }
+                }
+            }
+        } catch {}
+    }
+    if (!data.captions) addUrlLog('자막 없음 (자동생성 자막 없는 영상)', 'info');
+
+    return data;
 }
 
 async function fetchViaProxy(url) {
