@@ -288,8 +288,8 @@
         <div class="card-title">🔗 URL 분석 <span style="font-size:0.75rem;font-weight:400;color:var(--muted);">(YouTube · 웹사이트)</span></div>
         <div style="display:flex;gap:0.6rem;align-items:flex-start;">
             <div style="flex:1;">
-                <input type="text" id="urlInput" placeholder="https://www.youtube.com/watch?v=... 또는 모터쇼 웹사이트 주소" style="width:100%;">
-                <div class="hint" style="margin-top:0.35rem;">YouTube 영상, 모터쇼 공식 사이트, 자동차 뉴스 등 — AI가 차량 목록을 자동 추출합니다</div>
+                <input type="text" id="urlInput" placeholder="https://www.youtube.com/watch?v=... 또는 박람회 웹사이트 주소" style="width:100%;">
+                <div class="hint" style="margin-top:0.35rem;">YouTube 영상, 박람회 공식 사이트, 관련 뉴스 등 — AI가 전시 목록을 자동 추출합니다</div>
             </div>
             <button class="btn btn-primary" id="urlAnalyzeBtn" onclick="analyzeURL()" style="white-space:nowrap;flex-shrink:0;">🔍 분석</button>
         </div>
@@ -1281,14 +1281,15 @@ async function analyzeURL() {
             addUrlLog(`페이지 제목: ${sourceTitle}`, 'success');
         }
 
-        // Groq로 차량 정보 추출
-        addUrlLog('AI가 차량 정보 분석 중...', 'info');
+        // Groq로 전시 항목 추출
+        const p = getCurrentPreset();
+        addUrlLog(`AI가 ${p.l3} 정보 분석 중...`, 'info');
         const cars = await extractCarsFromText(content, sourceTitle, apiKey);
 
         if (!cars.length) {
-            addUrlLog('차량 정보를 찾지 못했습니다. 다른 URL을 시도해보세요.', 'warning');
+            addUrlLog(`${p.l3} 정보를 찾지 못했습니다. 다른 URL을 시도해보세요.`, 'warning');
         } else {
-            addUrlLog(`✓ ${cars.length}개 차종 발견!`, 'success');
+            addUrlLog(`✓ ${cars.length}개 ${p.l3} 발견!`, 'success');
             // S.results에 추가
             cars.forEach(car => {
                 S.results.push({
