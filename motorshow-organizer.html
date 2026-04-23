@@ -1118,85 +1118,66 @@ function openCarInfoFromBtn(btn) {
     openCarInfo(btn.dataset.company, btn.dataset.model);
 }
 
-// ── 웹 정보 수집 (Wikipedia + DuckDuckGo) ──
+// ── 웹 정보 수집 (Wikipedia + DuckDuckGo, 제품 + 회사 별도) ──
 async function fetchWebInfo(company, model) {
-    const info = { wikipedia: '', wikiUrl: '', wikiTitle: '', officialSite: '', ddgAbstract: '' };
-    const query = `${company} ${model}`;
+    const info = { wikipedia: '', wikiUrl: '', wikiTitle: '', officialSite: '', ddgAbstract: '', companyWiki: '', companyWikiUrl: '' };
 
-    // 1) Wikipedia 검색 → 본문 추출 (CORS 허용)
-    try {
-        const sRes = await fetch(
-            `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=1&format=json&origin=*`,
-            { signal: AbortSignal.timeout(7000) }
-        );
-        if (sRes.ok) {
-            const sd = await sRes.json();
-            const title = sd.query?.search?.[0]?.title;
-            if (title) {
-                info.wikiTitle = title;
-                info.wikiUrl   = `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`;
-                const pRes = await fetch(
-                    `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=true&explaintext=true&titles=${encodeURIComponent(title)}&format=json&origin=*`,
-                    { signal: AbortSignal.timeout(7000) }
-                );
-                if (pRes.ok) {
-                    const pd = await pRes.json();
-                    const page = Object.values(pd.query?.pages || {})[0];
-                    if (page?.extract) {
-                        info.wikipedia = page.extract.replace(/\s+/g, ' ').trim().slice(0, 3500);
-                    }
-                }
-            }
-        }
-    } catch {}
-
-    // 한국어 Wikipedia도 시도 (영문 실패 또는 보완)
-    if (!info.wikipedia) {
-        try {
-            const sRes = await fetch(
-                `https://ko.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=1&format=json&origin=*`,
-                { signal: AbortSignal.timeout(6000) }
-            );
-            if (sRes.ok) {
-                const sd = await sRes.json();
-                const title = sd.query?.search?.[0]?.title;
-                if (title) {
-                    if (!info.wikiUrl) info.wikiUrl = `https://ko.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`;
-                    const pRes = await fetch(
-                        `https://ko.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=true&explaintext=true&titles=${encodeURIComponent(title)}&format=json&origin=*`,
-                        { signal: AbortSignal.timeout(6000) }
-                    );
-                    if (pRes.ok) {
-                        const pd = await pRes.json();
-                        const page = Object.values(pd.query?.pages || {})[0];
-                        if (page?.extract) info.wikipedia = page.extract.replace(/\s+/g, ' ').trim().slice(0, 3000);
-                    }
-                }
-            }
-        } catch {}
+    async function wikiExtract(lang, searchQuery) {
+        const base = `https://${lang}.wikipedia.org/w/api.php`;
+        const sRes = await fetch(`${base}?action=query&list=search&srsearch=${encodeURIComponent(searchQuery)}&srlimit=1&format=json&origin=*`, { signal: AbortSignal.timeout(7000) });
+        if (!sRes.ok) return null;
+        const sd = await sRes.json();
+        const title = sd.query?.search?.[0]?.title;
+        if (!title) return null;
+        const pRes = await fetch(`${base}?action=query&prop=extracts&exintro=true&explaintext=true&titles=${encodeURIComponent(title)}&format=json&origin=*`, { signal: AbortSignal.timeout(7000) });
+        if (!pRes.ok) return null;
+        const pd = await pRes.json();
+        const page = Object.values(pd.query?.pages || {})[0];
+        return page?.extract ? { title, text: page.extract.replace(/\s+/g, ' ').trim(), url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}` } : null;
     }
 
-    // 2) DuckDuckGo Instant Answer — 공식 사이트 URL + 요약
+    // 1) 제품 Wikipedia (영문 → 한국어 fallback)
     try {
-        const res = await fetch(
-            `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`,
-            { signal: AbortSignal.timeout(6000) }
-        );
-        if (res.ok) {
-            const d = await res.json();
-            if (d.AbstractText)  info.ddgAbstract  = d.AbstractText.slice(0, 1200);
-            if (d.OfficialSite)  info.officialSite = d.OfficialSite;
-            if (!info.wikiUrl && d.AbstractURL?.includes('wikipedia.org')) info.wikiUrl = d.AbstractURL;
+        let r = await wikiExtract('en', `${company} ${model}`);
+        if (!r) r = await wikiExtract('ko', `${company} ${model}`);
+        if (r) { info.wikipedia = r.text.slice(0, 3000); info.wikiTitle = r.title; info.wikiUrl = r.url; }
+    } catch {}
+
+    // 2) 회사 Wikipedia (제품 페이지와 다를 경우만 — 별도 수집)
+    try {
+        let r = await wikiExtract('en', company);
+        if (!r) r = await wikiExtract('ko', company);
+        if (r && r.title !== info.wikiTitle) {
+            info.companyWiki = r.text.slice(0, 2500);
+            info.companyWikiUrl = r.url;
+            if (!info.wikiUrl) info.wikiUrl = r.url;
         }
     } catch {}
 
-    // 3) 공식 사이트 페이지 본문 수집 (proxy 경유)
+    // 3) DuckDuckGo — 공식 사이트 + 회사 요약
+    try {
+        const [prodRes, compRes] = await Promise.all([
+            fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(company + ' ' + model)}&format=json&no_html=1&skip_disambig=1`, { signal: AbortSignal.timeout(6000) }),
+            fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(company)}&format=json&no_html=1&skip_disambig=1`,               { signal: AbortSignal.timeout(6000) }),
+        ]);
+        if (prodRes.ok) {
+            const d = await prodRes.json();
+            if (d.AbstractText) info.ddgAbstract  = d.AbstractText.slice(0, 1000);
+            if (d.OfficialSite) info.officialSite = d.OfficialSite;
+            if (!info.wikiUrl && d.AbstractURL?.includes('wikipedia.org')) info.wikiUrl = d.AbstractURL;
+        }
+        if (compRes.ok) {
+            const d = await compRes.json();
+            if (!info.officialSite && d.OfficialSite) info.officialSite = d.OfficialSite;
+            if (d.AbstractText && !info.ddgAbstract) info.ddgAbstract = d.AbstractText.slice(0, 1000);
+        }
+    } catch {}
+
+    // 4) 공식 사이트 본문 수집 (proxy)
     if (info.officialSite) {
         try {
-            const pageText = await fetchViaProxy(info.officialSite);
-            if (pageText && pageText.length > 200) {
-                info.officialPageText = pageText.slice(0, 2000);
-            }
+            const t = await fetchViaProxy(info.officialSite);
+            if (t && t.length > 200) info.officialPageText = t.slice(0, 2000);
         } catch {}
     }
 
@@ -1269,11 +1250,12 @@ async function fetchCarInfo(company, model, webInfo = {}) {
 
     // 수집된 웹 데이터 조합
     const webContext = [];
-    if (webInfo.wikipedia)       webContext.push(`[Wikipedia]\n${webInfo.wikipedia}`);
-    if (webInfo.ddgAbstract)     webContext.push(`[웹 요약]\n${webInfo.ddgAbstract}`);
+    if (webInfo.wikipedia)        webContext.push(`[제품 Wikipedia]\n${webInfo.wikipedia}`);
+    if (webInfo.companyWiki)      webContext.push(`[회사 Wikipedia]\n${webInfo.companyWiki}`);
+    if (webInfo.ddgAbstract)      webContext.push(`[웹 요약]\n${webInfo.ddgAbstract}`);
     if (webInfo.officialPageText) webContext.push(`[공식 사이트]\n${webInfo.officialPageText}`);
     const webContextStr = webContext.length
-        ? `\n\n아래는 웹에서 수집한 실제 정보입니다. 이 내용을 최우선으로 참고하고 부족한 부분만 학습 데이터로 보완하세요:\n\n${webContext.join('\n\n---\n\n').slice(0, 6000)}`
+        ? `\n\n아래는 웹에서 수집한 실제 정보입니다. 이 내용을 최우선으로 참고하고 부족한 부분만 학습 데이터로 보완하세요:\n\n${webContext.join('\n\n---\n\n').slice(0, 7000)}`
         : '';
 
     const specFields = isMotorshow ? `
@@ -1304,6 +1286,15 @@ async function fetchCarInfo(company, model, webInfo = {}) {
   "brand": "제조사·브랜드",${specFields}
   "features": ["주요 특징·기술 3~6가지"],
   "description": "이 ${itemType}에 대한 2~3문장 한국어 설명 (출시 배경, 핵심 기술, 시장 위치 포함)",
+  "company_info": {
+    "headquarters": "본사 위치 (도시, 국가)",
+    "founded": "설립 연도 (예: 1937년)",
+    "employees": "임직원 수 (예: 약 37만 명)",
+    "revenue": "연간 매출액 (예: 약 2,740억 달러 / 약 274조 원, 최근 연도 기준)",
+    "main_products": ["주요 판매 제품 또는 서비스 3~6가지"],
+    "key_technologies": ["핵심 독자 기술 또는 특허 기술 3~5가지"],
+    "company_description": "회사 전체에 대한 1~2문장 한국어 소개 (설립 배경, 사업 영역, 글로벌 위치)"
+  },
   "official_website": "공식 웹사이트 URL (알고 있는 경우, 모르면 빈 문자열)",
   "wikipedia_search": "영문 Wikipedia 검색에 적합한 영어 검색어"
 }
@@ -1315,7 +1306,7 @@ async function fetchCarInfo(company, model, webInfo = {}) {
         body: JSON.stringify({
             model: groqModel,
             messages: [{ role: 'user', content: prompt }],
-            max_tokens: 900,
+            max_tokens: 1200,
             temperature: 0.1,
         })
     });
@@ -1387,13 +1378,59 @@ function renderCarInfoContent(info, webInfo = {}, webSources = []) {
            </div>`
         : '';
 
+    // 회사 정보 섹션
+    const ci = info.company_info || {};
+    const naC = v => (!v || v === '정보 없음' || v === '') ? null : v;
+
+    const companyStats = [
+        { icon: '📍', label: '본사', value: naC(ci.headquarters) },
+        { icon: '🏛', label: '설립', value: naC(ci.founded) },
+        { icon: '👥', label: '임직원', value: naC(ci.employees) },
+        { icon: '💰', label: '매출액', value: naC(ci.revenue) },
+    ].filter(s => s.value);
+
+    const companyStatsHTML = companyStats.map(s =>
+        `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.8rem;display:flex;align-items:flex-start;gap:0.5rem;">
+            <span style="font-size:1rem;flex-shrink:0;">${s.icon}</span>
+            <div>
+                <div style="font-size:0.7rem;color:var(--muted);margin-bottom:2px;">${esc(s.label)}</div>
+                <div style="font-size:0.83rem;font-weight:600;">${esc(s.value)}</div>
+            </div>
+        </div>`
+    ).join('');
+
+    const mainProductsHTML = (ci.main_products || []).filter(f => f && f !== '정보 없음').length
+        ? `<div style="margin-top:0.75rem;">
+               <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.05em;">주요 제품·서비스</div>
+               <div class="features-wrap">${ci.main_products.filter(f => f && f !== '정보 없음').map(f => `<span style="background:rgba(66,133,244,0.1);color:#4285f4;border:1px solid rgba(66,133,244,0.25);border-radius:100px;padding:0.2rem 0.7rem;font-size:0.78rem;">${esc(f)}</span>`).join('')}</div>
+           </div>`
+        : '';
+
+    const keyTechHTML = (ci.key_technologies || []).filter(f => f && f !== '정보 없음').length
+        ? `<div style="margin-top:0.75rem;">
+               <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.05em;">핵심 기술</div>
+               <div class="features-wrap">${ci.key_technologies.filter(f => f && f !== '정보 없음').map(f => `<span style="background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.25);border-radius:100px;padding:0.2rem 0.7rem;font-size:0.78rem;">⚡ ${esc(f)}</span>`).join('')}</div>
+           </div>`
+        : '';
+
+    const companySection = (companyStats.length || mainProductsHTML || keyTechHTML)
+        ? `<div style="margin-top:1.25rem;padding-top:1.1rem;border-top:1px solid var(--border);">
+               <div class="section-label">🏢 회사 정보 — ${esc(info.brand || company)}</div>
+               ${naC(ci.company_description) ? `<div style="font-size:0.85rem;color:var(--muted);line-height:1.65;margin-bottom:0.85rem;">${esc(ci.company_description)}</div>` : ''}
+               ${companyStats.length ? `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:0.5rem;margin-bottom:0.25rem;">${companyStatsHTML}</div>` : ''}
+               ${mainProductsHTML}
+               ${keyTechHTML}
+           </div>`
+        : '';
+
     // 웹 출처 배지
     const webBadges = webSources.slice(0, 4).map(s =>
         `<a href="${esc(s.url)}" target="_blank" style="display:inline-flex;align-items:center;gap:0.3rem;background:var(--surface2);border:1px solid var(--border);border-radius:100px;padding:0.15rem 0.6rem;font-size:0.72rem;color:var(--muted);text-decoration:none;">${esc(s.label)}</a>`
     ).join('');
 
-    const sourceSection = (webInfo.wikipedia || webInfo.ddgAbstract)
-        ? `<div style="margin-top:0.6rem;padding-top:0.6rem;border-top:1px solid var(--border);font-size:0.75rem;color:var(--muted);display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+    const hasWebData = webInfo.wikipedia || webInfo.companyWiki || webInfo.ddgAbstract;
+    const sourceSection = hasWebData
+        ? `<div style="margin-top:0.8rem;padding-top:0.6rem;border-top:1px solid var(--border);font-size:0.75rem;color:var(--muted);display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
                <span>📡 정보 출처:</span>${webBadges}
                <span style="margin-left:auto;color:rgba(52,168,83,0.8);">✓ 실시간 웹 데이터 반영</span>
            </div>`
@@ -1407,6 +1444,7 @@ function renderCarInfoContent(info, webInfo = {}, webSources = []) {
         ${na(info.description) ? `<div class="car-desc">${esc(info.description)}</div>` : ''}
         ${specHTML ? `<div><div class="section-label">주요 사양</div><div class="spec-grid">${specHTML}</div></div>` : ''}
         ${featuresHTML}
+        ${companySection}
         ${sourceSection}
     `;
 }
