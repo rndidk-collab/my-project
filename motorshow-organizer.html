@@ -153,6 +153,36 @@
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+        /* Info View */
+        .info-list { display: grid; gap: 0.6rem; }
+        .info-item { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+        .info-item-name { font-weight: 600; font-size: 0.95rem; }
+        .info-item-sub { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+        .btn-info { background: rgba(66,133,244,0.12); color: #4285f4; border: 1px solid rgba(66,133,244,0.3); }
+        .btn-info:hover { background: rgba(66,133,244,0.22); }
+
+        /* Info button in tree */
+        .info-btn-tree { background: rgba(66,133,244,0.1); color: #4285f4; border: 1px solid rgba(66,133,244,0.3); padding: 0.15rem 0.5rem; border-radius: 5px; font-size: 0.72rem; cursor: pointer; transition: background 0.15s; }
+        .info-btn-tree:hover { background: rgba(66,133,244,0.25); }
+
+        /* Car Info Modal */
+        .car-info-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.75rem; width: 600px; max-width: 94vw; max-height: 88vh; overflow-y: auto; }
+        .car-info-header { margin-bottom: 1rem; }
+        .car-info-name { font-size: 1.3rem; font-weight: 700; }
+        .car-info-sub { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
+        .car-desc { font-size: 0.88rem; line-height: 1.75; color: var(--muted); margin: 0.9rem 0; padding: 0.85rem 1rem; background: var(--surface2); border-radius: 8px; border-left: 3px solid #4285f4; }
+        .spec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin: 0.9rem 0; }
+        @media(max-width:480px){ .spec-grid { grid-template-columns: 1fr; } }
+        .spec-item { background: var(--surface2); border-radius: 7px; padding: 0.6rem 0.75rem; }
+        .spec-label { font-size: 0.72rem; color: var(--muted); margin-bottom: 3px; }
+        .spec-value { font-size: 0.88rem; font-weight: 600; }
+        .features-wrap { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.4rem; }
+        .feature-tag { background: rgba(52,168,83,0.1); color: var(--success); border: 1px solid rgba(52,168,83,0.25); border-radius: 100px; padding: 0.2rem 0.7rem; font-size: 0.78rem; }
+        .car-info-loading { text-align: center; padding: 2.5rem 1rem; color: var(--muted); }
+        .spinner-icon { font-size: 2rem; display: inline-block; animation: spin 1.2s linear infinite; margin-bottom: 0.6rem; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .section-label { font-size: 0.78rem; color: var(--muted); margin-bottom: 0.4rem; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; }
     </style>
 </head>
 <body>
@@ -285,9 +315,11 @@
         <div class="tabs">
             <div class="tab active" onclick="switchTab('tree', this)">🌳 트리 보기</div>
             <div class="tab" onclick="switchTab('grid', this)">🖼 사진 보기</div>
+            <div class="tab" onclick="switchTab('info', this)">📋 차종 정보</div>
         </div>
         <div id="treeView"></div>
         <div id="gridView" style="display:none;"></div>
+        <div id="infoView" style="display:none;"></div>
         <div class="action-bar" style="margin-top:1.25rem;">
             <button class="btn btn-success" onclick="exportCSV()">📄 CSV 저장 (엑셀)</button>
             <button class="btn btn-secondary" onclick="exportJSON()">📋 JSON 저장</button>
@@ -295,6 +327,22 @@
         </div>
     </div>
 
+</div>
+
+<!-- 차종 정보 모달 -->
+<div class="modal-overlay" id="carInfoModal" onclick="onCarInfoOverlayClick(event)">
+    <div class="car-info-modal">
+        <div id="carInfoContent">
+            <div class="car-info-loading">
+                <div class="spinner-icon">⏳</div>
+                <div>정보를 가져오는 중...</div>
+            </div>
+        </div>
+        <div class="modal-actions" id="carInfoActions" style="display:none;">
+            <button class="btn btn-secondary" onclick="openWiki()">🔍 Wikipedia</button>
+            <button class="btn btn-secondary" onclick="closeCarInfoModal()">닫기</button>
+        </div>
+    </div>
 </div>
 
 <!-- 수정 모달 -->
@@ -633,6 +681,7 @@ function showResults() {
     populateFilters();
     renderTree();
     renderGrid();
+    renderInfoView();
 }
 
 function populateFilters() {
@@ -707,7 +756,10 @@ function renderTree() {
             Object.entries(mmap).sort().forEach(([model, cnt]) => {
                 html += `<div class="tree-model">
   <span>🚗 ${esc(model)}</span>
-  <span class="badge">${cnt}장</span>
+  <span style="display:flex;align-items:center;gap:0.4rem;">
+    <button class="info-btn-tree" data-company="${esc(company)}" data-model="${esc(model)}" onclick="openCarInfoFromBtn(this)">ℹ️ 정보</button>
+    <span class="badge">${cnt}장</span>
+  </span>
 </div>`;
             });
             html += '</div></div>';
@@ -750,7 +802,10 @@ ${thumb}
     <div>🚗 ${esc(r.result?.car_model||'미확인')}</div>
     <div class="${cc}" style="margin-top:2px;">${ci} ${conf==='high'?'높음':conf==='medium'?'보통':'낮음'}</div>
   </div>
-  <button class="btn btn-secondary btn-sm" style="width:100%;margin-top:6px;" onclick="openEdit(${idx})">✏️ 수정</button>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px;">
+    <button class="btn btn-secondary btn-sm" onclick="openEdit(${idx})">✏️ 수정</button>
+    <button class="btn btn-info btn-sm" data-company="${esc(r.result?.company||'')}" data-model="${esc(r.result?.car_model||'')}" onclick="openCarInfoFromBtn(this)">ℹ️ 정보</button>
+  </div>
 </div>
 </div>`;
     }).join('') + '</div>';
@@ -765,6 +820,7 @@ function switchTab(tab, el) {
     el.classList.add('active');
     document.getElementById('treeView').style.display = tab === 'tree' ? '' : 'none';
     document.getElementById('gridView').style.display = tab === 'grid' ? '' : 'none';
+    document.getElementById('infoView').style.display = tab === 'info' ? '' : 'none';
 }
 
 // ══════════════════════════════════════════
@@ -789,7 +845,7 @@ function saveEdit() {
     r.result.exhibition_hall = document.getElementById('editHall').value.trim()     || '미확인';
     r.result.company         = document.getElementById('editCompany').value.trim()  || '미확인';
     r.result.car_model       = document.getElementById('editCarModel').value.trim() || '미확인';
-    closeModal(); populateFilters(); renderTree(); renderGrid();
+    closeModal(); populateFilters(); renderTree(); renderGrid(); renderInfoView();
 }
 
 // ══════════════════════════════════════════
@@ -849,6 +905,175 @@ function esc(str) {
 }
 function emptyHTML(icon, msg) {
     return `<div class="empty"><div class="empty-icon">${icon}</div><div>${msg}</div></div>`;
+}
+
+// ══════════════════════════════════════════
+// 차종 정보 검색 (Gemini AI — 무료)
+// ══════════════════════════════════════════
+let currentWikiSearch = '';
+
+function renderInfoView() {
+    const done = S.results.filter(r => r.result);
+    const el = document.getElementById('infoView');
+    if (!done.length) { el.innerHTML = emptyHTML('🚗', '분류 결과가 없습니다'); return; }
+
+    // 고유 (제조사, 차종) 쌍 수집
+    const pairs = {};
+    done.forEach(r => {
+        const key = `${r.result.company}|||${r.result.car_model}`;
+        if (!pairs[key]) pairs[key] = { company: r.result.company, model: r.result.car_model, count: 0 };
+        pairs[key].count++;
+    });
+
+    const items = Object.values(pairs).sort((a, b) =>
+        a.company !== b.company ? a.company.localeCompare(b.company) : a.model.localeCompare(b.model)
+    );
+
+    el.innerHTML = `
+        <div style="font-size:0.82rem;color:var(--muted);margin-bottom:0.75rem;">
+            총 <strong style="color:var(--text);">${items.length}종</strong>의 차량이 분류됐습니다. 차종을 선택하면 AI가 상세 정보를 검색합니다.
+        </div>
+        <div class="info-list">` +
+        items.map(p => `
+            <div class="info-item">
+                <div>
+                    <div class="info-item-name">🚗 ${esc(p.model)}</div>
+                    <div class="info-item-sub">🏭 ${esc(p.company)} &nbsp;·&nbsp; 사진 ${p.count}장</div>
+                </div>
+                <button class="btn btn-info btn-sm" data-company="${esc(p.company)}" data-model="${esc(p.model)}" onclick="openCarInfoFromBtn(this)">🔍 정보 검색</button>
+            </div>
+        `).join('') +
+        `</div>`;
+}
+
+function openCarInfoFromBtn(btn) {
+    openCarInfo(btn.dataset.company, btn.dataset.model);
+}
+
+async function openCarInfo(company, model) {
+    const modal   = document.getElementById('carInfoModal');
+    const content = document.getElementById('carInfoContent');
+    const actions = document.getElementById('carInfoActions');
+    currentWikiSearch = `${company} ${model}`;
+
+    content.innerHTML = `<div class="car-info-loading">
+        <div class="spinner-icon">⏳</div>
+        <div style="margin-top:0.5rem;font-size:0.95rem;">${esc(company)} ${esc(model)} 정보 검색 중...</div>
+        <div style="font-size:0.78rem;color:var(--muted);margin-top:0.3rem;">Gemini AI로 차량 스펙을 수집합니다</div>
+    </div>`;
+    actions.style.display = 'none';
+    modal.classList.add('open');
+
+    try {
+        const info = await fetchCarInfo(company, model);
+        renderCarInfoContent(info);
+        if (info.wikipedia_search) currentWikiSearch = info.wikipedia_search;
+        actions.style.display = '';
+    } catch (e) {
+        content.innerHTML = `<div class="car-info-loading">
+            <div style="font-size:2rem;">❌</div>
+            <div style="margin-top:0.5rem;color:var(--error);">정보를 가져오지 못했습니다</div>
+            <div style="font-size:0.78rem;color:var(--muted);margin-top:0.25rem;">${esc(e.message)}</div>
+        </div>`;
+        actions.innerHTML = `<button class="btn btn-secondary" onclick="closeCarInfoModal()">닫기</button>`;
+        actions.style.display = '';
+    }
+}
+
+async function fetchCarInfo(company, model) {
+    const apiKey = document.getElementById('apiKey').value.trim();
+    if (!apiKey) throw new Error('API Key가 없습니다. 설정에서 입력해주세요.');
+
+    const geminiModel = document.getElementById('model').value;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`;
+
+    const prompt = `자동차 "${company} ${model}"에 대한 정보를 아래 JSON 형식으로 정확하게 알려주세요.
+다른 텍스트 없이 JSON만 반환하세요:
+{
+  "name": "정식 모델명",
+  "brand": "제조사",
+  "segment": "차량 세그먼트 (예: 소형 SUV, 준중형 세단, 스포츠카)",
+  "year_introduced": "최초 출시 연도 또는 현 세대 출시 연도",
+  "country": "제조 국가",
+  "engine": "엔진 정보 (예: 2.0L 터보 직렬 4기통 또는 순수 전기)",
+  "power": "최고 출력 (예: 245마력 / 180kW)",
+  "torque": "최대 토크 (예: 350Nm)",
+  "drivetrain": "구동방식 (예: 전륜구동 FWD / 후륜구동 RWD / 사륜구동 AWD)",
+  "acceleration": "0-100km/h 가속 시간 (예: 6.2초)",
+  "top_speed": "최고 속도 (예: 250km/h)",
+  "features": ["주요 특징 또는 기술 3~5가지"],
+  "description": "이 차량에 대한 2~3문장 한국어 설명",
+  "wikipedia_search": "영문 Wikipedia 검색에 적합한 영어 검색어"
+}
+모르는 항목은 "정보 없음"으로 기입하세요.`;
+
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: 700, temperature: 0.2 }
+        })
+    });
+
+    if (res.status === 429) throw new Error('API 요청 한도 초과 — 잠시 후 다시 시도해주세요');
+    if (!res.ok) throw new Error(`API 오류 (HTTP ${res.status})`);
+
+    const data = await res.json();
+    const raw  = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const m    = raw.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error('응답 파싱 실패');
+    return JSON.parse(m[0]);
+}
+
+function renderCarInfoContent(info) {
+    const content = document.getElementById('carInfoContent');
+    const na = v => (!v || v === '정보 없음') ? null : v;
+
+    const specs = [
+        { label: '세그먼트',   value: na(info.segment) },
+        { label: '출시 연도',  value: na(info.year_introduced) },
+        { label: '제조 국가',  value: na(info.country) },
+        { label: '구동방식',   value: na(info.drivetrain) },
+        { label: '엔진',       value: na(info.engine) },
+        { label: '최고 출력',  value: na(info.power) },
+        { label: '최대 토크',  value: na(info.torque) },
+        { label: '0-100km/h', value: na(info.acceleration) },
+        { label: '최고 속도',  value: na(info.top_speed) },
+    ].filter(s => s.value);
+
+    const specHTML = specs.map(s =>
+        `<div class="spec-item"><div class="spec-label">${esc(s.label)}</div><div class="spec-value">${esc(s.value)}</div></div>`
+    ).join('');
+
+    const subParts = [
+        na(info.segment),
+        na(info.year_introduced) ? na(info.year_introduced) + '년~' : null,
+        na(info.country),
+    ].filter(Boolean).join(' · ');
+
+    const featuresHTML = (info.features || []).filter(f => f && f !== '정보 없음').length
+        ? `<div style="margin-top:1rem;">
+              <div class="section-label">주요 특징</div>
+              <div class="features-wrap">${info.features.filter(f => f && f !== '정보 없음').map(f => `<span class="feature-tag">${esc(f)}</span>`).join('')}</div>
+           </div>`
+        : '';
+
+    content.innerHTML = `
+        <div class="car-info-header">
+            <div class="car-info-name">🚗 ${esc(info.brand || '')} ${esc(info.name || '')}</div>
+            ${subParts ? `<div class="car-info-sub">${esc(subParts)}</div>` : ''}
+        </div>
+        ${na(info.description) ? `<div class="car-desc">${esc(info.description)}</div>` : ''}
+        ${specHTML ? `<div><div class="section-label">주요 사양</div><div class="spec-grid">${specHTML}</div></div>` : ''}
+        ${featuresHTML}
+    `;
+}
+
+function closeCarInfoModal() { document.getElementById('carInfoModal').classList.remove('open'); }
+function onCarInfoOverlayClick(e) { if (e.target.id === 'carInfoModal') closeCarInfoModal(); }
+function openWiki() {
+    window.open(`https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(currentWikiSearch)}`, '_blank');
 }
 </script>
 </body>
