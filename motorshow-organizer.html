@@ -1545,7 +1545,7 @@ function renderCarInfoContent(info, webInfo = {}, webSources = []) {
         : '';
 
     const companySection = `<div style="margin-top:1.25rem;padding-top:1.1rem;border-top:1px solid var(--border);">
-        <div class="section-label">🏢 회사 정보 — ${esc(info.brand || company)}</div>
+        <div class="section-label">🏢 회사 정보 — ${esc(info.brand || '')}</div>
         ${naC(ci.company_description) ? `<div style="font-size:0.85rem;color:var(--muted);line-height:1.65;margin-bottom:0.85rem;">${esc(ci.company_description)}</div>` : ''}
         <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:0.5rem;">${basicStatsHTML}</div>
         ${historyHTML}
