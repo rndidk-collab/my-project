@@ -1250,24 +1250,47 @@ async function analyzeURL() {
         let content = '', sourceTitle = url, ytThumb = null;
 
         if (urlType === 'youtube') {
-            // YouTube oEmbed로 제목·채널 가져오기
+            // 1) oEmbed로 제목·채널 가져오기
             addUrlLog('YouTube 영상 정보 가져오는 중...', 'info');
+            const vid = extractYouTubeId(url);
+            ytThumb = vid ? `https://img.youtube.com/vi/${vid}/mqdefault.jpg` : null;
+
             const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`).catch(() => null);
             if (oembedRes?.ok) {
                 const oe = await oembedRes.json();
                 sourceTitle = oe.title || sourceTitle;
-                ytThumb = `https://img.youtube.com/vi/${extractYouTubeId(url)}/mqdefault.jpg`;
                 content = `제목: ${oe.title}\n채널: ${oe.author_name}`;
                 addUrlLog(`영상 제목: ${oe.title}`, 'success');
+            } else {
+                addUrlLog('영상 제목을 가져오지 못했습니다. URL을 확인해주세요.', 'warning');
             }
-            // CORS 프록시로 페이지 본문 추가 수집
+
+            // 2) CORS 프록시로 영상 설명 수집 시도
             addUrlLog('영상 설명 수집 중...', 'info');
             const pageText = await fetchViaProxy(url);
+            let desc = '';
             if (pageText) {
-                // YouTube 페이지에서 description 추출
-                const descMatch = pageText.match(/"description":\{"simpleText":"([\s\S]{0,2000}?)"\}/);
-                if (descMatch) content += '\n설명: ' + descMatch[1].replace(/\\n/g, '\n');
-                else content += '\n(영상 설명 추출 불가 — 제목 기반 분석)';
+                // 여러 패턴 시도
+                const patterns = [
+                    /"shortDescription":"((?:[^"\\]|\\.)*)"/,
+                    /"description":\{"simpleText":"([\s\S]{0,3000}?)"\}/,
+                    /attributedDescription.*?"content":"([\s\S]{0,3000}?)"/,
+                ];
+                for (const pat of patterns) {
+                    const m = pageText.match(pat);
+                    if (m && m[1].length > 20) {
+                        desc = m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').slice(0, 2000);
+                        break;
+                    }
+                }
+            }
+            if (desc) {
+                content += '\n\n영상 설명:\n' + desc;
+                addUrlLog(`영상 설명 ${desc.length}자 수집 완료`, 'success');
+            } else {
+                content += '\n\n(영상 설명 수집 불가 — YouTube 차단. 제목 기반으로만 분석합니다)';
+                addUrlLog('⚠️ YouTube 설명 수집 불가 — 제목만으로 분석 (정확도 낮을 수 있음)', 'warning');
+                addUrlLog('💡 더 정확한 분석을 원하면 박람회 공식 사이트나 뉴스 기사 URL을 사용하세요', 'info');
             }
         } else {
             // 일반 웹사이트
