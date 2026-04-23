@@ -1118,24 +1118,134 @@ function openCarInfoFromBtn(btn) {
     openCarInfo(btn.dataset.company, btn.dataset.model);
 }
 
+// ── 웹 정보 수집 (Wikipedia + DuckDuckGo) ──
+async function fetchWebInfo(company, model) {
+    const info = { wikipedia: '', wikiUrl: '', wikiTitle: '', officialSite: '', ddgAbstract: '' };
+    const query = `${company} ${model}`;
+
+    // 1) Wikipedia 검색 → 본문 추출 (CORS 허용)
+    try {
+        const sRes = await fetch(
+            `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=1&format=json&origin=*`,
+            { signal: AbortSignal.timeout(7000) }
+        );
+        if (sRes.ok) {
+            const sd = await sRes.json();
+            const title = sd.query?.search?.[0]?.title;
+            if (title) {
+                info.wikiTitle = title;
+                info.wikiUrl   = `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`;
+                const pRes = await fetch(
+                    `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=true&explaintext=true&titles=${encodeURIComponent(title)}&format=json&origin=*`,
+                    { signal: AbortSignal.timeout(7000) }
+                );
+                if (pRes.ok) {
+                    const pd = await pRes.json();
+                    const page = Object.values(pd.query?.pages || {})[0];
+                    if (page?.extract) {
+                        info.wikipedia = page.extract.replace(/\s+/g, ' ').trim().slice(0, 3500);
+                    }
+                }
+            }
+        }
+    } catch {}
+
+    // 한국어 Wikipedia도 시도 (영문 실패 또는 보완)
+    if (!info.wikipedia) {
+        try {
+            const sRes = await fetch(
+                `https://ko.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=1&format=json&origin=*`,
+                { signal: AbortSignal.timeout(6000) }
+            );
+            if (sRes.ok) {
+                const sd = await sRes.json();
+                const title = sd.query?.search?.[0]?.title;
+                if (title) {
+                    if (!info.wikiUrl) info.wikiUrl = `https://ko.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`;
+                    const pRes = await fetch(
+                        `https://ko.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=true&explaintext=true&titles=${encodeURIComponent(title)}&format=json&origin=*`,
+                        { signal: AbortSignal.timeout(6000) }
+                    );
+                    if (pRes.ok) {
+                        const pd = await pRes.json();
+                        const page = Object.values(pd.query?.pages || {})[0];
+                        if (page?.extract) info.wikipedia = page.extract.replace(/\s+/g, ' ').trim().slice(0, 3000);
+                    }
+                }
+            }
+        } catch {}
+    }
+
+    // 2) DuckDuckGo Instant Answer — 공식 사이트 URL + 요약
+    try {
+        const res = await fetch(
+            `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`,
+            { signal: AbortSignal.timeout(6000) }
+        );
+        if (res.ok) {
+            const d = await res.json();
+            if (d.AbstractText)  info.ddgAbstract  = d.AbstractText.slice(0, 1200);
+            if (d.OfficialSite)  info.officialSite = d.OfficialSite;
+            if (!info.wikiUrl && d.AbstractURL?.includes('wikipedia.org')) info.wikiUrl = d.AbstractURL;
+        }
+    } catch {}
+
+    // 3) 공식 사이트 페이지 본문 수집 (proxy 경유)
+    if (info.officialSite) {
+        try {
+            const pageText = await fetchViaProxy(info.officialSite);
+            if (pageText && pageText.length > 200) {
+                info.officialPageText = pageText.slice(0, 2000);
+            }
+        } catch {}
+    }
+
+    return info;
+}
+
 async function openCarInfo(company, model) {
     const modal   = document.getElementById('carInfoModal');
     const content = document.getElementById('carInfoContent');
     const actions = document.getElementById('carInfoActions');
     currentWikiSearch = `${company} ${model}`;
 
-    content.innerHTML = `<div class="car-info-loading">
-        <div class="spinner-icon">⏳</div>
-        <div style="margin-top:0.5rem;font-size:0.95rem;">${esc(company)} ${esc(model)} 정보 검색 중...</div>
-        <div style="font-size:0.78rem;color:var(--muted);margin-top:0.3rem;">Gemini AI로 차량 스펙을 수집합니다</div>
-    </div>`;
+    const setLoading = (title, sub) => {
+        content.innerHTML = `<div class="car-info-loading">
+            <div class="spinner-icon">⏳</div>
+            <div style="margin-top:0.5rem;font-size:0.95rem;">${esc(title)}</div>
+            <div style="font-size:0.78rem;color:var(--muted);margin-top:0.3rem;">${esc(sub)}</div>
+        </div>`;
+    };
+
+    setLoading(`${company} ${model}`, 'Wikipedia · 공식 사이트에서 실제 정보 수집 중...');
     actions.style.display = 'none';
     modal.classList.add('open');
 
+    // 웹 정보 수집과 API 키 체크를 병렬로
+    const [webInfo] = await Promise.all([
+        fetchWebInfo(company, model),
+        new Promise(r => setTimeout(r, 0)), // tick
+    ]);
+
+    setLoading(`${company} ${model}`, 'AI가 수집된 정보를 분석·정리 중...');
+
+    // 수집 결과를 로그로 기록 (모달 외부의 상태 업데이트 없이)
+    const webSources = [];
+    if (webInfo.wikiUrl)      webSources.push({ label: 'Wikipedia', url: webInfo.wikiUrl });
+    if (webInfo.officialSite) webSources.push({ label: '공식 사이트', url: webInfo.officialSite });
+    webSources.push({ label: 'Google 검색', url: `https://www.google.com/search?q=${encodeURIComponent(company + ' ' + model)}` });
+    webSources.push({ label: 'Naver 검색',  url: `https://search.naver.com/search.naver?query=${encodeURIComponent(company + ' ' + model)}` });
+
     try {
-        const info = await fetchCarInfo(company, model);
-        renderCarInfoContent(info);
+        const info = await fetchCarInfo(company, model, webInfo);
+
+        renderCarInfoContent(info, webInfo, webSources);
         if (info.wikipedia_search) currentWikiSearch = info.wikipedia_search;
+
+        // 동적 액션 버튼
+        actions.innerHTML = webSources.map(s =>
+            `<button class="btn btn-secondary btn-sm" onclick="window.open(${JSON.stringify(s.url)},'_blank')">${esc(s.label)}</button>`
+        ).join('') + `<button class="btn btn-secondary btn-sm" onclick="closeCarInfoModal()">닫기</button>`;
         actions.style.display = '';
     } catch (e) {
         content.innerHTML = `<div class="car-info-loading">
@@ -1148,43 +1258,65 @@ async function openCarInfo(company, model) {
     }
 }
 
-async function fetchCarInfo(company, model) {
+async function fetchCarInfo(company, model, webInfo = {}) {
     const apiKey = document.getElementById('apiKey').value.trim();
     if (!apiKey) throw new Error('API Key가 없습니다. 설정에서 입력해주세요.');
 
     const groqModel = document.getElementById('model').value;
+    const p = getCurrentPreset();
+    const itemType = p.l3 || '제품';
+    const isMotorshow = (p.l3 === '차종' || !p.l3);
 
-    const prompt = `자동차 "${company} ${model}"에 대한 정보를 아래 JSON 형식으로 정확하게 알려주세요.
-다른 텍스트 없이 JSON만 반환하세요:
-{
-  "name": "정식 모델명",
-  "brand": "제조사",
-  "segment": "차량 세그먼트 (예: 소형 SUV, 준중형 세단, 스포츠카)",
+    // 수집된 웹 데이터 조합
+    const webContext = [];
+    if (webInfo.wikipedia)       webContext.push(`[Wikipedia]\n${webInfo.wikipedia}`);
+    if (webInfo.ddgAbstract)     webContext.push(`[웹 요약]\n${webInfo.ddgAbstract}`);
+    if (webInfo.officialPageText) webContext.push(`[공식 사이트]\n${webInfo.officialPageText}`);
+    const webContextStr = webContext.length
+        ? `\n\n아래는 웹에서 수집한 실제 정보입니다. 이 내용을 최우선으로 참고하고 부족한 부분만 학습 데이터로 보완하세요:\n\n${webContext.join('\n\n---\n\n').slice(0, 6000)}`
+        : '';
+
+    const specFields = isMotorshow ? `
+  "segment": "카테고리·세그먼트 (예: 소형 SUV, 준중형 세단, 전기 스포츠카)",
   "year_introduced": "최초 출시 연도 또는 현 세대 출시 연도",
   "country": "제조 국가",
-  "engine": "엔진 정보 (예: 2.0L 터보 직렬 4기통 또는 순수 전기)",
-  "power": "최고 출력 (예: 245마력 / 180kW)",
-  "torque": "최대 토크 (예: 350Nm)",
-  "drivetrain": "구동방식 (예: 전륜구동 FWD / 후륜구동 RWD / 사륜구동 AWD)",
-  "acceleration": "0-100km/h 가속 시간 (예: 6.2초)",
-  "top_speed": "최고 속도 (예: 250km/h)",
-  "features": ["주요 특징 또는 기술 3~5가지"],
-  "description": "이 차량에 대한 2~3문장 한국어 설명",
+  "engine": "엔진·동력원 정보",
+  "power": "최고 출력",
+  "torque": "최대 토크",
+  "drivetrain": "구동방식",
+  "acceleration": "0-100km/h 가속 시간",
+  "top_speed": "최고 속도",` : `
+  "segment": "제품 카테고리·분류",
+  "year_introduced": "출시 또는 공개 연도",
+  "country": "제조·개발 국가",
+  "engine": "핵심 기술·사양 요약",
+  "power": "성능 지표 또는 주요 스펙",
+  "torque": "추가 기술 사양",
+  "drivetrain": "연결·호환 방식",
+  "acceleration": "처리 속도 또는 반응 시간 (해당 시)",
+  "top_speed": "최대 처리량 또는 용량 (해당 시)",`;
+
+    const prompt = `"${company}"의 "${model}" ${itemType}에 대한 정보를 아래 JSON 형식으로 알려주세요.${webContextStr}
+
+다른 텍스트 없이 JSON만 반환하세요:
+{
+  "name": "정식 제품명",
+  "brand": "제조사·브랜드",${specFields}
+  "features": ["주요 특징·기술 3~6가지"],
+  "description": "이 ${itemType}에 대한 2~3문장 한국어 설명 (출시 배경, 핵심 기술, 시장 위치 포함)",
+  "official_website": "공식 웹사이트 URL (알고 있는 경우, 모르면 빈 문자열)",
   "wikipedia_search": "영문 Wikipedia 검색에 적합한 영어 검색어"
 }
 모르는 항목은 "정보 없음"으로 기입하세요.`;
 
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
         body: JSON.stringify({
             model: groqModel,
             messages: [{ role: 'user', content: prompt }],
-            max_tokens: 700,
-            temperature: 0.2
+            max_tokens: 900,
+            temperature: 0.1,
         })
     });
 
@@ -1195,24 +1327,46 @@ async function fetchCarInfo(company, model) {
     const raw  = data.choices?.[0]?.message?.content || '';
     const m    = raw.match(/\{[\s\S]*\}/);
     if (!m) throw new Error('응답 파싱 실패');
-    return JSON.parse(m[0]);
+    const result = JSON.parse(m[0]);
+
+    // AI가 공식 사이트를 알고 있으면 webInfo에 반영
+    if (result.official_website && !webInfo.officialSite) {
+        webInfo.officialSite = result.official_website;
+    }
+    return result;
 }
 
-function renderCarInfoContent(info) {
+function renderCarInfoContent(info, webInfo = {}, webSources = []) {
     const content = document.getElementById('carInfoContent');
-    const na = v => (!v || v === '정보 없음') ? null : v;
+    const na = v => (!v || v === '정보 없음' || v === '') ? null : v;
+    const p = getCurrentPreset();
+    const isMotorshow = (p.l3 === '차종' || !p.l3);
 
-    const specs = [
-        { label: '세그먼트',   value: na(info.segment) },
-        { label: '출시 연도',  value: na(info.year_introduced) },
-        { label: '제조 국가',  value: na(info.country) },
-        { label: '구동방식',   value: na(info.drivetrain) },
-        { label: '엔진',       value: na(info.engine) },
-        { label: '최고 출력',  value: na(info.power) },
-        { label: '최대 토크',  value: na(info.torque) },
-        { label: '0-100km/h', value: na(info.acceleration) },
-        { label: '최고 속도',  value: na(info.top_speed) },
-    ].filter(s => s.value);
+    const specDefs = isMotorshow
+        ? [
+            { label: '세그먼트',   key: 'segment' },
+            { label: '출시 연도',  key: 'year_introduced', suffix: '년~' },
+            { label: '제조 국가',  key: 'country' },
+            { label: '구동방식',   key: 'drivetrain' },
+            { label: '엔진',       key: 'engine' },
+            { label: '최고 출력',  key: 'power' },
+            { label: '최대 토크',  key: 'torque' },
+            { label: '0-100km/h', key: 'acceleration' },
+            { label: '최고 속도',  key: 'top_speed' },
+          ]
+        : [
+            { label: '카테고리',   key: 'segment' },
+            { label: '출시 연도',  key: 'year_introduced', suffix: '년~' },
+            { label: '제조 국가',  key: 'country' },
+            { label: '핵심 기술',  key: 'engine' },
+            { label: '주요 사양',  key: 'power' },
+            { label: '추가 사양',  key: 'torque' },
+            { label: '호환 방식',  key: 'drivetrain' },
+          ];
+
+    const specs = specDefs
+        .map(d => ({ label: d.label, value: na(info[d.key]) ? (info[d.key] + (d.suffix || '')) : null }))
+        .filter(s => s.value);
 
     const specHTML = specs.map(s =>
         `<div class="spec-item"><div class="spec-label">${esc(s.label)}</div><div class="spec-value">${esc(s.value)}</div></div>`
@@ -1220,9 +1374,11 @@ function renderCarInfoContent(info) {
 
     const subParts = [
         na(info.segment),
-        na(info.year_introduced) ? na(info.year_introduced) + '년~' : null,
+        na(info.year_introduced) ? info.year_introduced + '년~' : null,
         na(info.country),
     ].filter(Boolean).join(' · ');
+
+    const icon = isMotorshow ? '🚗' : (p.icon || '📦');
 
     const featuresHTML = (info.features || []).filter(f => f && f !== '정보 없음').length
         ? `<div style="margin-top:1rem;">
@@ -1231,14 +1387,27 @@ function renderCarInfoContent(info) {
            </div>`
         : '';
 
+    // 웹 출처 배지
+    const webBadges = webSources.slice(0, 4).map(s =>
+        `<a href="${esc(s.url)}" target="_blank" style="display:inline-flex;align-items:center;gap:0.3rem;background:var(--surface2);border:1px solid var(--border);border-radius:100px;padding:0.15rem 0.6rem;font-size:0.72rem;color:var(--muted);text-decoration:none;">${esc(s.label)}</a>`
+    ).join('');
+
+    const sourceSection = (webInfo.wikipedia || webInfo.ddgAbstract)
+        ? `<div style="margin-top:0.6rem;padding-top:0.6rem;border-top:1px solid var(--border);font-size:0.75rem;color:var(--muted);display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+               <span>📡 정보 출처:</span>${webBadges}
+               <span style="margin-left:auto;color:rgba(52,168,83,0.8);">✓ 실시간 웹 데이터 반영</span>
+           </div>`
+        : `<div style="margin-top:0.6rem;font-size:0.72rem;color:var(--muted);">ℹ️ AI 학습 데이터 기반 — 최신 정보는 아래 링크에서 확인하세요</div>`;
+
     content.innerHTML = `
         <div class="car-info-header">
-            <div class="car-info-name">🚗 ${esc(info.brand || '')} ${esc(info.name || '')}</div>
+            <div class="car-info-name">${icon} ${esc(info.brand || '')} ${esc(info.name || '')}</div>
             ${subParts ? `<div class="car-info-sub">${esc(subParts)}</div>` : ''}
         </div>
         ${na(info.description) ? `<div class="car-desc">${esc(info.description)}</div>` : ''}
         ${specHTML ? `<div><div class="section-label">주요 사양</div><div class="spec-grid">${specHTML}</div></div>` : ''}
         ${featuresHTML}
+        ${sourceSection}
     `;
 }
 
