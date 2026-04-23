@@ -254,7 +254,7 @@
             <div>
                 <label>Groq API Key</label>
                 <input type="password" id="apiKey" placeholder="gsk_..." autocomplete="off">
-                <div class="hint">🔒 키는 브라우저에만 저장, 외부 전송 없음</div>
+                <div class="hint">🔒 키는 브라우저에만 저장 · <a href="https://console.groq.com/keys" target="_blank" style="color:#4285f4;">발급받기</a></div>
             </div>
             <div>
                 <label>모델 선택</label>
@@ -275,6 +275,14 @@
                 <div class="hint" id="delayHint">요청 간 5초 대기 자동 적용</div>
             </div>
         </div>
+        <div style="margin-top:0.85rem;padding-top:0.85rem;border-top:1px solid var(--border);">
+            <label>Supadata API Key <span style="font-weight:400;color:var(--muted);">(YouTube 자막 추출 · 선택사항)</span></label>
+            <div style="display:flex;gap:0.6rem;align-items:center;">
+                <input type="password" id="supadataKey" placeholder="sd_..." autocomplete="off" style="max-width:340px;">
+                <span style="font-size:0.78rem;color:var(--muted);">무료 100회/일 · <a href="https://supadata.ai" target="_blank" style="color:#4285f4;">supadata.ai 무료 발급</a></span>
+            </div>
+            <div class="hint">입력하면 YouTube 자막을 자동으로 가져와 분석 정확도가 크게 향상됩니다</div>
+        </div>
         <div class="rate-info">
             <span>⚡ 무료 한도</span>
             <span>📅 하루 <strong>14,400회</strong></span>
@@ -285,13 +293,40 @@
 
     <!-- URL 분석 -->
     <div class="card">
-        <div class="card-title">🔗 URL 분석 <span style="font-size:0.75rem;font-weight:400;color:var(--muted);">(YouTube · 웹사이트)</span></div>
-        <div style="display:flex;gap:0.6rem;align-items:flex-start;">
-            <div style="flex:1;">
-                <input type="text" id="urlInput" placeholder="https://www.youtube.com/watch?v=... 또는 박람회 웹사이트 주소" style="width:100%;">
-                <div class="hint" style="margin-top:0.35rem;">YouTube 영상, 박람회 공식 사이트, 관련 뉴스 등 — AI가 전시 목록을 자동 추출합니다</div>
+        <div class="card-title">🔗 URL / 텍스트 분석 <span style="font-size:0.75rem;font-weight:400;color:var(--muted);">(YouTube · 웹사이트 · 직접 붙여넣기)</span></div>
+        <!-- 모드 토글 -->
+        <div style="display:flex;gap:0.5rem;margin-bottom:0.85rem;">
+            <button class="btn btn-sm" id="modeUrlBtn" onclick="switchUrlMode('url')" style="background:rgba(66,133,244,0.2);border:1px solid #4285f4;color:#4285f4;">🔗 URL</button>
+            <button class="btn btn-sm" id="modeTxtBtn" onclick="switchUrlMode('text')" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);">📝 텍스트 붙여넣기</button>
+        </div>
+        <!-- URL 모드 -->
+        <div id="urlModeDiv">
+            <div style="display:flex;gap:0.6rem;align-items:flex-start;">
+                <div style="flex:1;">
+                    <input type="text" id="urlInput" placeholder="https://www.youtube.com/watch?v=... 또는 박람회 웹사이트 주소" style="width:100%;">
+                    <div class="hint" style="margin-top:0.35rem;">YouTube 영상, 박람회 공식 사이트, 관련 뉴스 등 — AI가 전시 목록을 자동 추출합니다</div>
+                </div>
+                <button class="btn btn-primary" id="urlAnalyzeBtn" onclick="analyzeURL()" style="white-space:nowrap;flex-shrink:0;">🔍 분석</button>
             </div>
-            <button class="btn btn-primary" id="urlAnalyzeBtn" onclick="analyzeURL()" style="white-space:nowrap;flex-shrink:0;">🔍 분석</button>
+        </div>
+        <!-- 텍스트 붙여넣기 모드 -->
+        <div id="txtModeDiv" style="display:none;">
+            <div style="background:rgba(66,133,244,0.08);border:1px solid rgba(66,133,244,0.2);border-radius:8px;padding:0.75rem;margin-bottom:0.7rem;font-size:0.8rem;color:var(--muted);line-height:1.7;">
+                <strong style="color:#4285f4;">YouTube 내용 복사 방법</strong><br>
+                📝 <strong>영상 설명</strong>: 영상 아래 <strong style="color:var(--text);">더보기</strong> 클릭 → 전체 설명 복사<br>
+                💬 <strong>자막</strong>: 영상 우하단 <strong style="color:var(--text);">⋮ → 자막 열기</strong> → 자막 텍스트 복사<br>
+                🌐 <strong>웹페이지</strong>: 전시 목록 텍스트를 선택해 복사
+            </div>
+            <div style="display:flex;gap:0.6rem;align-items:flex-start;">
+                <div style="flex:1;">
+                    <textarea id="txtInput" rows="5" placeholder="YouTube 영상 설명, 자막, 또는 박람회 전시 내용을 여기에 붙여넣으세요..." style="width:100%;padding:0.6rem 0.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.85rem;outline:none;resize:vertical;font-family:inherit;transition:border-color 0.2s;" onfocus="this.style.borderColor='#4285f4'" onblur="this.style.borderColor='var(--border)'"></textarea>
+                    <div style="display:flex;gap:0.5rem;margin-top:0.4rem;align-items:center;">
+                        <input type="text" id="txtSourceName" placeholder="출처 이름 (선택사항, 예: BMW i5 공식 영상)" style="flex:1;font-size:0.82rem;">
+                        <button class="btn btn-sm btn-secondary" onclick="document.getElementById('txtInput').value=''">지우기</button>
+                    </div>
+                </div>
+                <button class="btn btn-primary" id="txtAnalyzeBtn" onclick="analyzeText()" style="white-space:nowrap;flex-shrink:0;">🔍 분석</button>
+            </div>
         </div>
         <div id="urlStatus" style="display:none;margin-top:0.75rem;">
             <div class="log" id="urlLog" style="height:80px;"></div>
@@ -443,10 +478,15 @@ const S = {
 window.addEventListener('DOMContentLoaded', () => {
     const k = localStorage.getItem('_groq_key') || localStorage.getItem('_gemini_key');
     if (k) document.getElementById('apiKey').value = k;
+    const sk = localStorage.getItem('_supadata_key');
+    if (sk) document.getElementById('supadataKey').value = sk;
     onExpoTypeChange(); // 초기 헤더·레이블 설정
 });
 document.getElementById('apiKey').addEventListener('input', e =>
     localStorage.setItem('_groq_key', e.target.value.trim())
+);
+document.getElementById('supadataKey').addEventListener('input', e =>
+    localStorage.setItem('_supadata_key', e.target.value.trim())
 );
 document.getElementById('fileInput').addEventListener('change', handleFiles);
 
@@ -1209,8 +1249,80 @@ function openWiki() {
 }
 
 // ══════════════════════════════════════════
-// URL 분석 (YouTube / 웹사이트)
+// URL 분석 (YouTube / 웹사이트 / 텍스트)
 // ══════════════════════════════════════════
+function switchUrlMode(mode) {
+    const isUrl = mode === 'url';
+    document.getElementById('urlModeDiv').style.display = isUrl ? '' : 'none';
+    document.getElementById('txtModeDiv').style.display = isUrl ? 'none' : '';
+    const urlBtn = document.getElementById('modeUrlBtn');
+    const txtBtn = document.getElementById('modeTxtBtn');
+    urlBtn.style.cssText = isUrl
+        ? 'background:rgba(66,133,244,0.2);border:1px solid #4285f4;color:#4285f4;'
+        : 'background:var(--surface2);border:1px solid var(--border);color:var(--muted);';
+    txtBtn.style.cssText = isUrl
+        ? 'background:var(--surface2);border:1px solid var(--border);color:var(--muted);'
+        : 'background:rgba(66,133,244,0.2);border:1px solid #4285f4;color:#4285f4;';
+    document.getElementById('urlStatus').style.display = 'none';
+    document.getElementById('urlLog').innerHTML = '';
+}
+
+async function analyzeText() {
+    const text    = document.getElementById('txtInput').value.trim();
+    const srcName = document.getElementById('txtSourceName').value.trim();
+    const apiKey  = document.getElementById('apiKey').value.trim();
+
+    if (!text)   { alert('분석할 텍스트를 붙여넣어 주세요.'); return; }
+    if (!apiKey) { alert('Groq API Key를 먼저 입력해주세요.'); return; }
+
+    const btn = document.getElementById('txtAnalyzeBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ 분석 중...';
+    document.getElementById('urlStatus').style.display = '';
+    document.getElementById('urlLog').innerHTML = '';
+
+    try {
+        const sourceTitle = srcName || '붙여넣기 텍스트';
+        addUrlLog(`텍스트 ${text.length}자 분석 시작...`, 'info');
+        const p = getCurrentPreset();
+        addUrlLog(`AI가 ${p.l3} 정보 분석 중...`, 'info');
+        const cars = await extractCarsFromText(text, sourceTitle, apiKey);
+
+        if (!cars.length) {
+            addUrlLog(`${p.l3} 정보를 찾지 못했습니다. 더 많은 내용을 붙여넣어 보세요.`, 'warning');
+        } else {
+            addUrlLog(`✓ ${cars.length}개 ${p.l3} 발견!`, 'success');
+            cars.forEach(car => {
+                S.results.push({
+                    file: null, filename: car.car_model || sourceTitle,
+                    path: sourceTitle, source: 'text', urlType: 'text',
+                    ytThumb: null, sourceTitle,
+                    status: 'done',
+                    result: {
+                        exhibition_hall: car.exhibition_hall || '미확인',
+                        company:   car.company   || '미확인',
+                        car_model: car.car_model || '미확인',
+                        confidence: car.confidence || 'medium',
+                        description: car.description || '',
+                    },
+                    thumb: null, error: null,
+                });
+            });
+            document.getElementById('processingCard').style.display = '';
+            document.getElementById('statTotal').textContent = S.results.length;
+            document.getElementById('statDone').textContent  = S.results.filter(r => r.status === 'done').length;
+            document.getElementById('statLeft').textContent  = 0;
+            showResults();
+            addUrlLog('결과가 아래 분류 결과에 추가됐습니다.', 'success');
+        }
+    } catch (e) {
+        addUrlLog(`오류: ${e.message}`, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🔍 분석';
+    }
+}
+
 function detectURLType(url) {
     if (/youtube\.com\/watch|youtu\.be\//.test(url)) return 'youtube';
     return 'website';
@@ -1325,62 +1437,106 @@ async function analyzeURL() {
 // ── YouTube 전용 데이터 수집 (설명 + 자막) ──
 async function fetchYouTubeData(vid) {
     const data = { title: '', channel: '', description: '', captions: '' };
+    const supadataKey = document.getElementById('supadataKey').value.trim();
 
-    // 1) oEmbed — 제목·채널 (가장 안정적)
+    // 1) oEmbed — 제목·채널 (가장 안정적, CORS 허용)
     try {
         const res = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${vid}&format=json`);
         if (res.ok) { const d = await res.json(); data.title = d.title || ''; data.channel = d.author_name || ''; }
     } catch {}
     addUrlLog(`제목: ${data.title || '가져오기 실패'}`, data.title ? 'success' : 'warning');
 
-    // 2) Piped API — 영상 설명 전체 (여러 인스턴스 순서대로 시도)
-    addUrlLog('영상 설명 수집 중 (Piped API)...', 'info');
-    const pipedHosts = [
-        'https://pipedapi.kavin.rocks',
-        'https://piped-api.garudalinux.org',
-        'https://api.piped.projectsegfau.lt',
-        'https://pipedapi.adminforge.de',
-    ];
-    for (const host of pipedHosts) {
+    // 2) Supadata API — 자막 전문 (CORS 허용, 가장 안정적)
+    if (supadataKey) {
+        addUrlLog('자막 수집 중 (Supadata API)...', 'info');
         try {
-            const res = await fetch(`${host}/streams/${vid}`, { signal: AbortSignal.timeout(6000) });
+            const res = await fetch(
+                `https://api.supadata.ai/v1/youtube/transcript?url=https://www.youtube.com/watch?v=${vid}`,
+                { headers: { 'x-api-key': supadataKey }, signal: AbortSignal.timeout(10000) }
+            );
             if (res.ok) {
                 const d = await res.json();
-                data.description = (d.description || '').slice(0, 3000);
-                data.title    = data.title    || d.title    || '';
-                data.channel  = data.channel  || d.uploader || '';
-                if (data.description) { addUrlLog(`영상 설명 ${data.description.length}자 수집 완료`, 'success'); break; }
+                // content 배열 또는 text 필드
+                let transcript = '';
+                if (Array.isArray(d.content)) {
+                    transcript = d.content.map(seg => seg.text || '').join(' ').replace(/\s+/g, ' ').trim();
+                } else if (typeof d.content === 'string') {
+                    transcript = d.content.trim();
+                } else if (d.transcript) {
+                    transcript = d.transcript.trim();
+                }
+                if (transcript.length > 50) {
+                    data.captions = `[자막]\n${transcript.slice(0, 5000)}`;
+                    addUrlLog(`✓ 자막 ${transcript.length}자 수집 완료 (Supadata)`, 'success');
+                } else {
+                    addUrlLog('자막 없음 (이 영상은 자막 미제공)', 'warning');
+                }
+            } else {
+                const err = await res.json().catch(() => ({}));
+                addUrlLog(`Supadata 오류: ${err.message || res.status}`, 'warning');
             }
-        } catch {}
+        } catch (e) {
+            addUrlLog(`Supadata 연결 실패: ${e.message}`, 'warning');
+        }
     }
-    if (!data.description) addUrlLog('영상 설명 수집 실패 (Piped 연결 안됨)', 'warning');
 
-    // 3) YouTube 자막 API (timedtext) — CORS 허용 공개 API
-    addUrlLog('자막 수집 중...', 'info');
-    const captionLangs = ['ko', 'en', 'ja', 'zh-Hans'];
-    for (const lang of captionLangs) {
-        try {
-            const res = await fetch(`https://www.youtube.com/api/timedtext?lang=${lang}&v=${vid}&fmt=json3`, { signal: AbortSignal.timeout(5000) });
-            if (res.ok) {
-                const d = await res.json();
-                const events = d.events || [];
-                const text = events.flatMap(e => (e.segs || []).map(s => s.utf8 || '')).join(' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
-                if (text.length > 50) { data.captions = `[${lang} 자막]\n` + text; addUrlLog(`자막(${lang}) ${text.length}자 수집 완료`, 'success'); break; }
-            }
-        } catch {}
-        // xml 형식도 시도
-        try {
-            const res = await fetch(`https://www.youtube.com/api/timedtext?lang=${lang}&v=${vid}`, { signal: AbortSignal.timeout(5000) });
-            if (res.ok) {
-                const xml = await res.text();
-                if (xml.includes('<text')) {
-                    const text = xml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
+    // 3) Piped API — 영상 설명 전체 (설명문 수집, 막혀있을 수 있음)
+    if (!data.description) {
+        addUrlLog('영상 설명 수집 중 (Piped API)...', 'info');
+        const pipedHosts = [
+            'https://pipedapi.kavin.rocks',
+            'https://piped-api.garudalinux.org',
+            'https://api.piped.projectsegfau.lt',
+            'https://pipedapi.adminforge.de',
+        ];
+        for (const host of pipedHosts) {
+            try {
+                const res = await fetch(`${host}/streams/${vid}`, { signal: AbortSignal.timeout(5000) });
+                if (res.ok) {
+                    const d = await res.json();
+                    data.description = (d.description || '').slice(0, 3000);
+                    data.title    = data.title    || d.title    || '';
+                    data.channel  = data.channel  || d.uploader || '';
+                    if (data.description) { addUrlLog(`영상 설명 ${data.description.length}자 수집 완료`, 'success'); break; }
+                }
+            } catch {}
+        }
+        if (!data.description) addUrlLog('영상 설명 수집 실패 (네트워크 차단)', 'warning');
+    }
+
+    // 4) YouTube timedtext API — 자막 (Supadata 없을 때 시도)
+    if (!data.captions) {
+        addUrlLog('자막 수집 중 (YouTube timedtext)...', 'info');
+        const captionLangs = ['ko', 'en', 'ja', 'zh-Hans'];
+        for (const lang of captionLangs) {
+            try {
+                const res = await fetch(`https://www.youtube.com/api/timedtext?lang=${lang}&v=${vid}&fmt=json3`, { signal: AbortSignal.timeout(5000) });
+                if (res.ok) {
+                    const d = await res.json();
+                    const events = d.events || [];
+                    const text = events.flatMap(e => (e.segs || []).map(s => s.utf8 || '')).join(' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
                     if (text.length > 50) { data.captions = `[${lang} 자막]\n` + text; addUrlLog(`자막(${lang}) ${text.length}자 수집 완료`, 'success'); break; }
                 }
+            } catch {}
+            try {
+                const res = await fetch(`https://www.youtube.com/api/timedtext?lang=${lang}&v=${vid}`, { signal: AbortSignal.timeout(5000) });
+                if (res.ok) {
+                    const xml = await res.text();
+                    if (xml.includes('<text')) {
+                        const text = xml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
+                        if (text.length > 50) { data.captions = `[${lang} 자막]\n` + text; addUrlLog(`자막(${lang}) ${text.length}자 수집 완료`, 'success'); break; }
+                    }
+                }
+            } catch {}
+        }
+        if (!data.captions) {
+            if (!supadataKey) {
+                addUrlLog('💡 자막 수집 실패 — Supadata API Key 등록 시 자막 추출 가능 (무료)', 'info');
+            } else {
+                addUrlLog('자막 없는 영상입니다', 'info');
             }
-        } catch {}
+        }
     }
-    if (!data.captions) addUrlLog('자막 없음 (자동생성 자막 없는 영상)', 'info');
 
     return data;
 }
