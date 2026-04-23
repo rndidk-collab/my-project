@@ -194,10 +194,10 @@
 <body>
 
 <div class="header">
-    <div class="header-icon">🚗</div>
+    <div class="header-icon" id="headerIcon">🚗</div>
     <div>
-        <div class="header-title">모터쇼 사진 분류기</div>
-        <div class="header-sub">Groq AI (LLaMA Vision) — 전시관 · 제조사 · 차종 자동 분류</div>
+        <div class="header-title" id="headerTitle">박람회 사진 분류기</div>
+        <div class="header-sub" id="headerSub">Groq AI (LLaMA Vision) — 전시관 · 업체 · 제품 자동 분류</div>
     </div>
     <span class="free-badge">✅ 완전 무료</span>
 </div>
@@ -218,6 +218,38 @@
     <!-- 설정 -->
     <div class="card">
         <div class="card-title">⚙️ 설정</div>
+
+        <!-- 박람회 유형 -->
+        <div style="margin-bottom:1rem;">
+            <label>박람회 유형</label>
+            <select id="expoType" onchange="onExpoTypeChange()" style="max-width:360px;">
+                <option value="motorshow">🚗 자동차 모터쇼</option>
+                <option value="it">💻 IT · 전자 박람회</option>
+                <option value="food">🍔 식품 · F&amp;B 박람회</option>
+                <option value="medical">🏥 의료 · 헬스케어 박람회</option>
+                <option value="construction">🏗 건설 · 건축 박람회</option>
+                <option value="art">🎨 아트 · 디자인 전시</option>
+                <option value="industrial">🏭 산업 · 제조 박람회</option>
+                <option value="custom">✏️ 사용자 정의</option>
+            </select>
+        </div>
+
+        <!-- 사용자 정의 레이블 (숨김) -->
+        <div id="customLabelRow" style="display:none; display:none; grid-template-columns:1fr 1fr 1fr; gap:0.75rem; margin-bottom:1rem;">
+            <div>
+                <label>1단계 분류명</label>
+                <input type="text" id="customL1" placeholder="예: 전시관, 홀, 구역" oninput="onExpoTypeChange()">
+            </div>
+            <div>
+                <label>2단계 분류명</label>
+                <input type="text" id="customL2" placeholder="예: 업체, 회사, 기관" oninput="onExpoTypeChange()">
+            </div>
+            <div>
+                <label>3단계 분류명</label>
+                <input type="text" id="customL3" placeholder="예: 제품, 출품작, 전시물" oninput="onExpoTypeChange()">
+            </div>
+        </div>
+
         <div class="setup-grid">
             <div>
                 <label>Groq API Key</label>
@@ -411,6 +443,7 @@ const S = {
 window.addEventListener('DOMContentLoaded', () => {
     const k = localStorage.getItem('_groq_key') || localStorage.getItem('_gemini_key');
     if (k) document.getElementById('apiKey').value = k;
+    onExpoTypeChange(); // 초기 헤더·레이블 설정
 });
 document.getElementById('apiKey').addEventListener('input', e =>
     localStorage.setItem('_groq_key', e.target.value.trim())
@@ -492,19 +525,63 @@ function makeThumbnail(file) {
 // ══════════════════════════════════════════
 // GEMINI API CALL
 // ══════════════════════════════════════════
-const PROMPT = `이 이미지는 자동차 모터쇼 박람회에서 찍은 사진입니다.
+// ── 박람회 유형 프리셋 ──
+const EXPO_PRESETS = {
+    motorshow:    { icon:'🚗', name:'자동차 모터쇼',      l1:'전시관', l2:'제조사',   l3:'차종',    l1ex:'Hall A, 1관', l2ex:'Toyota, BMW, 현대',  l3ex:'GR Supra, M4, 아이오닉6', hint:'부스 간판·로고·엠블럼·배너를 단서로 활용하세요.' },
+    it:           { icon:'💻', name:'IT·전자 박람회',      l1:'전시관', l2:'회사',    l3:'제품',    l1ex:'Hall A, 1관', l2ex:'Samsung, Apple, LG',  l3ex:'Galaxy S25, MacBook',      hint:'제품 로고·배너·모델명 스티커를 활용하세요.' },
+    food:         { icon:'🍔', name:'식품·F&B 박람회',     l1:'전시관', l2:'업체',    l3:'식품',    l1ex:'Hall A, 1관', l2ex:'농심, CJ, 오리온',    l3ex:'신라면, 비비고',           hint:'부스 간판·제품 포장·브랜드 로고를 활용하세요.' },
+    medical:      { icon:'🏥', name:'의료·헬스케어 박람회',l1:'전시관', l2:'업체',    l3:'제품·장비',l1ex:'Hall A, 1관',l2ex:'삼성메디슨, 필립스',  l3ex:'MRI, 초음파기기',          hint:'부스 간판·장비 로고·제품 패널을 활용하세요.' },
+    construction: { icon:'🏗', name:'건설·건축 박람회',    l1:'전시관', l2:'업체',    l3:'제품·자재',l1ex:'Hall A, 1관',l2ex:'현대건설, 삼성물산',  l3ex:'창호, 단열재, 타일',       hint:'부스 간판·제품 디스플레이를 활용하세요.' },
+    art:          { icon:'🎨', name:'아트·디자인 전시',    l1:'전시관', l2:'작가·기관',l3:'작품',   l1ex:'Hall A, 1관', l2ex:'김환기, 국립현대미술관',l3ex:'회화, 조각, 설치작품',    hint:'작품 라벨·작가 이름·전시 안내판을 활용하세요.' },
+    industrial:   { icon:'🏭', name:'산업·제조 박람회',    l1:'전시관', l2:'업체',    l3:'장비·제품',l1ex:'Hall A, 1관',l2ex:'두산, LS, 현대중공업', l3ex:'CNC, 산업용 로봇',        hint:'부스 간판·장비 모델명·브랜드를 활용하세요.' },
+    custom:       { icon:'📋', name:'사용자 정의',          l1:'',       l2:'',        l3:'',        l1ex:'',            l2ex:'',                     l3ex:'',                         hint:'' },
+};
+
+function getCurrentPreset() {
+    const type = document.getElementById('expoType')?.value || 'motorshow';
+    const p = { ...EXPO_PRESETS[type] };
+    if (type === 'custom') {
+        p.l1 = document.getElementById('customL1')?.value.trim() || '전시관';
+        p.l2 = document.getElementById('customL2')?.value.trim() || '업체';
+        p.l3 = document.getElementById('customL3')?.value.trim() || '제품';
+    }
+    return p;
+}
+
+function onExpoTypeChange() {
+    const type = document.getElementById('expoType').value;
+    const p = getCurrentPreset();
+    const customRow = document.getElementById('customLabelRow');
+    customRow.style.display = type === 'custom' ? 'grid' : 'none';
+    document.getElementById('headerIcon').textContent  = p.icon;
+    document.getElementById('headerTitle').textContent = `${p.name} 사진 분류기`;
+    document.getElementById('headerSub').textContent   = `Groq AI (LLaMA Vision) — ${p.l1} · ${p.l2} · ${p.l3} 자동 분류`;
+    // 필터 레이블 갱신
+    const fh = document.getElementById('fHall');
+    const fc = document.getElementById('fCompany');
+    const fm = document.getElementById('fModel');
+    if (fh) fh.options[0].text = `🏛 ${p.l1} 전체`;
+    if (fc) fc.options[0].text = `🏭 ${p.l2} 전체`;
+    if (fm) fm.options[0].text = `🚗 ${p.l3} 전체`;
+    renderTree(); renderGrid(); renderInfoView();
+}
+
+function getAnalysisPrompt() {
+    const p = getCurrentPreset();
+    return `이 이미지는 박람회에서 찍은 사진입니다.
 
 다음 JSON만 반환하세요 (다른 텍스트 없이):
 {
-  "exhibition_hall": "전시관 이름 또는 번호 (예: Hall A, 1관, B관). 알 수 없으면 미확인",
-  "company": "자동차 제조사/브랜드 (예: Toyota, BMW, 현대, 기아). 알 수 없으면 미확인",
-  "car_model": "차종/모델명 (예: GR Supra, M4, 아이오닉6). 알 수 없으면 미확인",
+  "exhibition_hall": "${p.l1} 이름 또는 번호 (예: ${p.l1ex || 'Hall A, 1관'}). 알 수 없으면 미확인",
+  "company": "${p.l2} 이름 (예: ${p.l2ex || '업체명'}). 알 수 없으면 미확인",
+  "car_model": "${p.l3} 이름 (예: ${p.l3ex || '제품명'}). 알 수 없으면 미확인",
   "confidence": "high 또는 medium 또는 low",
   "description": "이미지 한 줄 설명"
 }
 
-힌트: 부스 간판, 로고, 엠블럼, 배너를 단서로 활용하세요.
+${p.hint}
 반드시 JSON만 출력하고 다른 텍스트를 포함하지 마세요.`;
+}
 
 async function analyzeImage(file, maxRetry = 3) {
     const apiKey = document.getElementById('apiKey').value.trim();
@@ -528,7 +605,7 @@ async function analyzeImage(file, maxRetry = 3) {
                         role: 'user',
                         content: [
                             { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } },
-                            { type: 'text', text: PROMPT }
+                            { type: 'text', text: getAnalysisPrompt() }
                         ]
                     }],
                     max_tokens: 350,
@@ -726,9 +803,10 @@ function populateFilters() {
             `<option value="">${label} 전체</option>` +
             items.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
     };
-    fill('fHall',    uniq('exhibition_hall'), '🏛 전시관');
-    fill('fCompany', uniq('company'),         '🏭 제조사');
-    fill('fModel',   uniq('car_model'),       '🚗 차종');
+    const p = getCurrentPreset();
+    fill('fHall',    uniq('exhibition_hall'), `🏛 ${p.l1}`);
+    fill('fCompany', uniq('company'),         `🏭 ${p.l2}`);
+    fill('fModel',   uniq('car_model'),       `🚗 ${p.l3}`);
 }
 
 function getFiltered() {
@@ -767,6 +845,7 @@ function renderTree() {
         tree[h][c][m]++;
     });
 
+    const p = getCurrentPreset();
     let html = '';
     Object.entries(tree).sort().forEach(([hall, cmap]) => {
         const total = Object.values(cmap).reduce((s, mmap) =>
@@ -774,7 +853,7 @@ function renderTree() {
 
         html += `<div class="tree-hall">
 <div class="tree-hall-header" onclick="toggleBody(this)">
-  <span>🏛 ${esc(hall)}</span>
+  <span>🏛 ${esc(p.l1)}: ${esc(hall)}</span>
   <span><span class="badge">${total}장</span> <span style="font-size:.8rem;margin-left:.3rem;">▼</span></span>
 </div>
 <div class="tree-hall-body">`;
@@ -783,13 +862,13 @@ function renderTree() {
             const cTotal = Object.values(mmap).reduce((a, n) => a + n, 0);
             html += `<div class="tree-company">
 <div class="tree-company-header">
-  <span>🏭 ${esc(company)}</span>
+  <span>🏭 ${esc(p.l2)}: ${esc(company)}</span>
   <span class="badge">${cTotal}장</span>
 </div>
 <div class="tree-models">`;
             Object.entries(mmap).sort().forEach(([model, cnt]) => {
                 html += `<div class="tree-model">
-  <span>🚗 ${esc(model)}</span>
+  <span>🚗 ${esc(p.l3)}: ${esc(model)}</span>
   <span style="display:flex;align-items:center;gap:0.4rem;">
     <button class="info-btn-tree" data-company="${esc(company)}" data-model="${esc(model)}" onclick="openCarInfoFromBtn(this)">ℹ️ 정보</button>
     <span class="badge">${cnt}장</span>
@@ -845,9 +924,9 @@ ${thumb}
   ${sourceBadge}
   <div class="photo-filename" title="${esc(r.filename)}">${esc(r.filename)}</div>
   <div class="photo-tags">
-    <div>🏛 ${esc(r.result?.exhibition_hall||'미확인')}</div>
-    <div>🏭 ${esc(r.result?.company||'미확인')}</div>
-    <div>🚗 ${esc(r.result?.car_model||'미확인')}</div>
+    <div>🏛 ${esc(getCurrentPreset().l1)}: ${esc(r.result?.exhibition_hall||'미확인')}</div>
+    <div>🏭 ${esc(getCurrentPreset().l2)}: ${esc(r.result?.company||'미확인')}</div>
+    <div>🚗 ${esc(getCurrentPreset().l3)}: ${esc(r.result?.car_model||'미확인')}</div>
     <div class="${cc}" style="margin-top:2px;">${ci} ${conf==='high'?'높음':conf==='medium'?'보통':'낮음'}</div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px;">
@@ -902,7 +981,8 @@ function saveEdit() {
 function exportCSV() {
     const rows = S.results.filter(r => r.result);
     if (!rows.length) { alert('내보낼 결과가 없습니다.'); return; }
-    const hdr = ['파일명','경로','전시관','제조사','차종','신뢰도','설명'];
+    const p = getCurrentPreset();
+    const hdr = ['파일명','경로', p.l1, p.l2, p.l3,'신뢰도','설명'];
     const csv = '\uFEFF' + [hdr, ...rows.map(r => [
         r.filename, r.path,
         r.result.exhibition_hall, r.result.company, r.result.car_model,
@@ -1275,27 +1355,28 @@ function extractTextFromHTML(html) {
 
 async function extractCarsFromText(content, sourceTitle, apiKey) {
     const model = document.getElementById('model').value;
-    const prompt = `다음은 자동차 모터쇼 관련 정보입니다.
+    const p = getCurrentPreset();
+    const prompt = `다음은 박람회(${p.name}) 관련 정보입니다.
 
 출처: ${sourceTitle}
 ---
 ${content}
 ---
 
-위 내용에서 전시된 자동차 목록을 추출하세요.
+위 내용에서 전시된 항목 목록을 추출하세요.
 다음 JSON 형식으로만 반환하세요 (다른 텍스트 없이):
 {
   "cars": [
     {
-      "exhibition_hall": "전시관명 (없으면 미확인)",
-      "company": "제조사/브랜드명",
-      "car_model": "차종/모델명",
-      "description": "이 차에 대한 한 줄 설명",
+      "exhibition_hall": "${p.l1}명 (없으면 미확인)",
+      "company": "${p.l2}명",
+      "car_model": "${p.l3}명",
+      "description": "이 항목에 대한 한 줄 설명",
       "confidence": "high 또는 medium 또는 low"
     }
   ]
 }
-차량 정보가 없으면 cars를 빈 배열로 반환하세요.`;
+전시 정보가 없으면 cars를 빈 배열로 반환하세요.`;
 
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
